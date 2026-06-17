@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<!-- Links the REAL renderer stylesheet so spacing tuned here is live in the app. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../src/renderer/styles.css" />
+<!-- screenshot-only: let the full timeline lay out (no scroll clip) for headless capture -->
+<style>html,body,.page,.scroll{height:auto!important;overflow:visible!important}</style>
+<title>beat spacing mock</title>
+</head>
+<body>
+<div class="page">
+  <div class="scroll">
+    <div class="timeline">
+      <div class="spine"></div>
+      <div class="spine-fill" style="height:60%"></div>
+
+      <!-- ASKED (head) -->
+      <div class="beat center head" style="--kc:var(--accent)">
+        <span class="flag on" style="--kc:var(--accent)">Asked</span>
+        <span class="knot fill" style="--kc:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <div class="cardwrap"><div class="card qcard"><div class="q">What are the tradeoffs of Electron vs Tauri?</div></div></div>
+      </div>
+
+      <!-- PLANNED (side, right) -->
+      <div class="beat right" style="--kc:var(--violet)">
+        <span class="flag on" style="--kc:var(--violet)">Planned</span>
+        <span class="knot fill" style="--kc:var(--violet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="stub"></span>
+        <div class="bmeta"><span class="date">3 tasks</span></div>
+        <div class="cardwrap"><div class="card open" style="--kc:var(--violet)"><div class="chead"><span class="cbadge">❖</span><div class="ctitle"><div class="t">Research plan — 3 tasks</div><div class="s">all tasks fork from the shared context</div></div></div><div class="plist">
+          <div class="prow"><span class="n">1</span><span style="flex:1;min-width:0">Survey Redux Toolkit (RTK) — core concepts (slice, thunk, dispatch, selectors), API surface area, and official documentation. Identify its primary use cases.</span><span class="src"><span class="d" style="background:var(--a1)"></span>web</span></div>
+          <div class="prow"><span class="n">2</span><span style="flex:1;min-width:0">Survey Zustand — core concepts (store, create, devtools, middleware), API surface area, and official documentation.</span><span class="src"><span class="d" style="background:var(--a2)"></span>web</span></div>
+        </div></div></div>
+      </div>
+
+      <!-- RESEARCH fork (centred spine-event) -->
+      <div class="beat center" style="--kc:var(--accent)">
+        <span class="flag on" style="--kc:var(--accent)">Research</span>
+        <span class="knot fill" style="--kc:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <div class="cardwrap"><div class="card ghost spine-event" style="--kc:var(--accent)"><div class="se-body"><div class="se-title">Forked 3 agents with shared context</div><div class="se-sub">prefix-shared once · each researches its angle · converges at synthesis</div></div></div></div>
+      </div>
+
+      <!-- A1 (side, left, live) -->
+      <div class="beat left" style="--kc:var(--a1)">
+        <span class="flag on" style="--kc:var(--a1)">A1</span>
+        <span class="knot live" style="--kc:var(--a1)"></span>
+        <span class="stub"></span>
+        <div class="bmeta"><span class="date">live</span></div>
+        <div class="cardwrap"><div class="card agent live open" style="--kc:var(--a1)">
+          <div class="chead"><span class="cbadge">A1</span><div class="ctitle"><div class="t">Agent 1</div></div><span class="pill p-live"><span class="ld"></span>writing</span><span class="cstat"><span>1 tools</span><span>283 tok</span></span></div>
+          <div class="ctask">Survey Redux Toolkit (RTK) — core concepts (slice, thunk, dispatch, selectors), API surface area, and official documentation. Identify its primary use cases for state management in React applications.</div>
+          <div class="cbody"><div class="work">
+            <div class="wrow live"><span class="wic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 1 4 10.5V16H8v-2.5A6 6 0 0 1 12 3z"/></svg></span><div class="wbody"><div class="wverb"><span class="k">Thinking</span></div><div class="wthink">The user wants me to survey Redux Toolkit (RTK) — specifically its core concepts, API surface area, official documentation, and primary use cases for state management in React applications.
+
+I need to:
+1. Search for Redux Toolkit information
+2. Fetch detailed pages from the search results to get comprehensive information about core concepts, API surface area, and official documentation.
+
+Let me start with a web search to find authoritative sources about Redux Toolkit.<span class="caret"></span></div></div></div>
+            <div class="wrow done"><span class="wic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4" stroke-linecap="round"/></svg></span><div class="wbody"><div class="wverb"><span class="k">Searched</span> <span class="q">"Redux Toolkit official documentation API surface…"</span></div><div class="wmeta"><span class="ok">✓</span> 8 results · redux-toolkit.js.org · github.com</div></div></div>
+          </div><div class="csrc"><span class="srcchip"><span class="host">redux-toolkit.js.org</span></span><span class="srcchip"><span class="host">github.com</span></span><span class="srcchip"><span class="host">devs.redux.io</span></span></div></div>
+        </div></div>
+      </div>
+
+      <!-- SYNTHESIS (centred, ghost/pending) -->
+      <div class="beat center" style="--kc:var(--syn)">
+        <span class="flag ghostflag" style="--kc:var(--syn)">Synthesis</span>
+        <span class="knot ghost" style="--kc:var(--syn)"></span>
+        <div class="cardwrap"><div class="card ghost" style="--kc:var(--syn)"><div class="chead"><span class="cbadge">∑</span><div class="ctitle"><div class="t">Synthesis</div><div class="s">aggregates the whole fan into one grounded answer</div></div><span class="pill p-queued">pending</span></div></div></div>
+      </div>
+
+      <!-- ANSWER (centred, ghost) -->
+      <div class="beat center" style="--kc:var(--accent)">
+        <span class="flag ghostflag" style="--kc:var(--accent)">Answer</span>
+        <span class="knot ghost" style="--kc:var(--accent)"></span>
+        <div class="cardwrap"><div class="card"><div class="answer-body md">
+          <h1>Electron vs Tauri — the tradeoffs</h1>
+          <p>Both ship a web UI as a desktop app, but they make opposite bets on the runtime. The short version: <strong>Electron</strong> bundles Chromium for consistency; <strong>Tauri</strong> uses the OS webview for size.</p>
+          <h2>Bundle size &amp; memory</h2>
+          <p>Electron ships a full Chromium + Node runtime — a hello-world is ~120&nbsp;MB and idles around 100&nbsp;MB of RAM. Tauri leans on the platform <code>WebView2</code>/<code>WKWebView</code>, so binaries land near 3–10&nbsp;MB.</p>
+          <ul>
+            <li><strong>Electron:</strong> predictable rendering — the same Chromium everywhere.</li>
+            <li><strong>Tauri:</strong> tiny artifacts, but you inherit each OS webview's quirks.</li>
+          </ul>
+          <h2>When each wins</h2>
+          <table>
+            <thead><tr><th>Need</th><th>Pick</th></tr></thead>
+            <tbody>
+              <tr><td>Heavy native/Node ecosystem</td><td>Electron</td></tr>
+              <tr><td>Smallest footprint</td><td>Tauri</td></tr>
+            </tbody>
+          </table>
+          <blockquote>For an inference-heavy app that already links a native addon, the runtime weight is dominated by the model — Electron's overhead is noise.</blockquote>
+          <p>See the <a href="https://www.electronjs.org/">Electron docs</a> and <a href="https://tauri.app/">Tauri docs</a> for specifics.</p>
+        </div></div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

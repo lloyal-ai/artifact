@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../src/renderer/styles.css" />
+<title>config surface mock — Apps-primary, App-Protocol-driven</title>
+<style>
+  /* ── Settings slide-over (mock-local; promote to styles.css once settled) ── */
+  .scrim { position: fixed; inset: 0; background: rgba(6,8,13,0.62); backdrop-filter: blur(3px); }
+  .panel { position: fixed; top: 0; right: 0; bottom: 0; width: 468px; background: var(--bg-1);
+    border-left: 1px solid var(--line); box-shadow: var(--shadow); display: flex; flex-direction: column; }
+  .panel-hd { display: flex; align-items: baseline; gap: 12px; padding: 22px 24px 18px; border-bottom: 1px solid var(--line); }
+  .panel-hd .t { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; color: var(--ink); }
+  .panel-hd .sub { font-size: 13px; color: var(--ink-3); }
+  .panel-hd .x { margin-left: auto; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+    color: var(--ink-2); background: var(--bg-3); border: 0; cursor: pointer; font-size: 15px; }
+  .panel-bd { overflow-y: auto; padding: 18px 24px 30px; }
+
+  .sec-t { font-size: 13px; font-weight: 650; letter-spacing: 0.01em; color: var(--ink-2); margin: 6px 2px 14px; }
+  /* section sub-head — "Apps", "Advanced" are peers */
+  .sec-head { display: flex; align-items: baseline; gap: 9px; margin: 2px 2px 15px; }
+  .sec-head .sh-t { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; color: var(--ink); }
+  .sec-head .sh-s { font-size: 12.5px; color: var(--ink-3); }
+
+  /* ── App card — collapsed by default (config field count is unpredictable) ── */
+  .app { border: 1px solid var(--line); border-radius: 14px; background: var(--bg-2); margin-bottom: 12px; overflow: hidden; }
+  .app-hd { display: flex; align-items: center; gap: 14px; padding: 16px 16px; cursor: pointer; }
+  /* icon tile — fallback glyph on grey when an app has no signed iconUrl */
+  .app-ic { width: 46px; height: 46px; border-radius: 12px; background: var(--bg-3); display: grid; place-items: center; color: var(--ink); flex: none; overflow: hidden; }
+  .app-ic svg { width: 22px; height: 22px; }
+  .app-ic img { width: 100%; height: 100%; object-fit: cover; }
+  /* real signed icon (apps.lloyal.ai content-addressed asset) — here a gradient tile stands in */
+  .app-ic.real { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14); }
+  .app-ic.real svg { color: #fff; width: 24px; height: 24px; }
+  .app-meta { min-width: 0; flex: 1; }
+  .app-name { font-size: 16.5px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+  .app-desc { font-size: 14px; color: var(--ink-2); margin-top: 3px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sw { width: 42px; height: 24px; border-radius: 999px; background: var(--bg-4); position: relative; cursor: pointer; flex: none; }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--ink-2); transition: transform .15s; }
+  .sw.on { background: color-mix(in srgb, var(--accent) 60%, var(--bg-4)); }
+  .sw.on::after { transform: translateX(18px); background: #07120d; }
+  .chev { color: var(--ink-3); flex: none; transition: transform .15s; }
+  .chev svg { width: 18px; height: 18px; display: block; }
+  .app.open .chev { transform: rotate(90deg); }
+
+  /* expanded body: tools + config fields (generated from configSchema) */
+  .app-body { border-top: 1px solid var(--line); padding: 4px 16px 16px; }
+  /* entitlement pills — signed capability disclosure, colour-coded by kind (Apple privacy-label style) */
+  .ents { display: flex; flex-wrap: wrap; gap: 8px; padding: 15px 0 6px; }
+  .ent {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12.5px; font-weight: 600; letter-spacing: -0.005em;
+    color: #dfe4ee;
+    background: #2c3446;
+    border: 0; border-radius: 980px; padding: 5px 12px 5px 10px;
+  }
+  .ent svg { width: 15px; height: 15px; color: #6fa3ef; flex: none; }
+
+  .field { padding: 10px 0; }
+  .field + .field { border-top: 1px solid var(--line); }
+  .field-l { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+  .field-l .k { font-size: 14.5px; color: var(--ink); font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
+  .field-l .fl { font-size: 14px; color: var(--ink); font-weight: 600; }
+  /* select-style control (search-engine adapter choice; extensible) */
+  .sel { display: flex; align-items: center; width: 100%; font-size: 14px; font-weight: 550; color: var(--ink);
+    background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 9px; padding: 10px 12px; cursor: pointer; }
+  .sel .sc { margin-left: auto; color: var(--ink-3); display: flex; }
+  .sel .sc svg { width: 16px; height: 16px; }
+  .field-l .badge { font-size: 10.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; border: 0;
+    background: var(--bg-3); color: var(--ink-3); }
+  .inp { display: flex; gap: 9px; }
+  .inp > input, .secinp { flex: 1; min-width: 0; }
+  .inp input { width: 100%; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 9px; padding: 10px 12px;
+    color: var(--ink); font-size: 14px; font-family: ui-monospace, Menlo, monospace; }
+  .inp input::placeholder { color: var(--ink-3); font-family: var(--sans); }
+  .secinp { position: relative; display: flex; }
+  .secinp input { padding-right: 38px; }
+  .secinp .eye { position: absolute; right: 5px; top: 5px; width: 28px; height: 28px; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; display: grid; place-items: center; }
+  .secinp .eye:hover { color: var(--ink); }
+  .secinp .eye svg { width: 17px; height: 17px; }
+  .field-note { font-size: 13px; color: var(--ink-3); margin-top: 8px; }
+  .field-note .ok { color: var(--accent-ink); }
+  .nocfg { font-size: 13.5px; color: var(--ink-3); padding: 14px 0 4px; }
+
+  .savebtn { font-size: 13.5px; font-weight: 600; color: var(--ink); background: var(--bg-3); border: 1px solid var(--line-2); border-radius: 9px; padding: 10px 15px; cursor: pointer; white-space: nowrap; }
+  .savebtn:hover { border-color: var(--accent); }
+
+  /* install affordance — apps come from the signed channel, never hardwired */
+  .install { display: flex; align-items: center; gap: 13px; padding: 15px 16px; border: 1px dashed var(--line-2); border-radius: 14px; color: var(--ink-2); cursor: pointer; margin-top: 4px; }
+  .install:hover { border-color: var(--accent); }
+  .install .plus { width: 36px; height: 36px; border-radius: 10px; background: var(--bg-3); display: grid; place-items: center; font-size: 20px; color: var(--ink); }
+  .install .it { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+  .install .is { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+  .install .is code { font-family: ui-monospace, Menlo, monospace; }
+
+  /* Advanced — collapsed; model/backend/context live here, not on the main surface */
+  .adv { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 18px; }
+  .adv-row { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  .adv-row .at { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; color: var(--ink); }
+  .adv-row .as { font-size: 13px; color: var(--ink-3); margin-left: auto; }
+  .adv-row .chev { color: var(--ink-3); transition: transform .15s; margin-left: auto; }
+  .adv.open .adv-row .chev { transform: rotate(90deg); }
+  /* read-only model & runtime info — display only, never editable (swapping the model changes tested app behaviour) */
+  .adv-body { margin-top: 14px; border-radius: 12px; background: color-mix(in srgb, var(--bg-1) 55%, var(--bg-2)); padding: 2px 15px; }
+  .irow { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 12px 0; font-size: 13.5px; }
+  .irow + .irow { border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+  .irow .il { color: var(--ink-3); }
+  .irow .iv { color: var(--ink); font-weight: 550; font-variant-numeric: tabular-nums; }
+  .adv-note { font-size: 12.5px; color: var(--ink-4); padding: 13px 1px 6px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="scrim"></div>
+  <div class="panel">
+    <div class="panel-hd">
+      <div class="t">Settings</div>
+      <button class="x">✕</button>
+    </div>
+    <div class="panel-bd">
+
+      <div class="sec-head"><span class="sh-t">Apps</span></div>
+
+      <!-- Each card is rendered from the app's manifest. Collapsed by default. -->
+
+      <!-- web: EXPANDED — entitlement pills (signed disclosure) + manifest-driven config -->
+      <div class="app open">
+        <div class="app-hd">
+          <span class="app-ic"><img src="https://apps.lloyal.ai/v1/assets/lloyal/web/aa3a2623cf27d8b1e4ca3fe5e53bca9ff3b36dd5cb3fda67510459f514b38469.png" alt="" /></span>
+          <span class="app-meta">
+            <div class="app-name">Web Research</div>
+            <div class="app-desc">Evidence from the open web — current claims, primary sources, official docs.</div>
+          </span>
+          <span class="sw on"></span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </div>
+        <div class="app-body">
+          <div class="ents">
+            <span class="ent net" title="Declares internet access"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.4 2.5 2.4 15.5 0 18M12 3c-2.4 2.5-2.4 15.5 0 18"/></svg>Internet</span>
+            <span class="ent egress" title="Declares third-party data transfer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 15V4M8 8l4-4 4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4" stroke-linecap="round"/></svg>Data transfer</span>
+            <span class="ent cred" title="Connects an account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="12" r="3.4"/><path d="M12.4 12H21M18 12v3M21 12v2.4" stroke-linecap="round"/></svg>Account</span>
+          </div>
+          <div class="field">
+            <div class="field-l"><span class="fl">Search engine</span></div>
+            <button class="sel"><span>Built-in SERP</span><span class="sc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+            <div class="field-note"><span class="ok">●</span> DuckDuckGo + Marginalia · no account needed.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- corpus: EXPANDED (shows the manifest-driven config fields) -->
+      <div class="app open">
+        <div class="app-hd">
+          <span class="app-ic"><img src="https://apps.lloyal.ai/v1/assets/lloyal/corpus/b9187a1e09463e16202b26c78886ab9dbc61790337a4db55073717147b1b09fc.png" alt="" /></span>
+          <span class="app-meta">
+            <div class="app-name">Corpus</div>
+            <div class="app-desc">Search a local document corpus — grep, read files, semantic retrieval.</div>
+          </span>
+          <span class="sw on"></span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </div>
+        <div class="app-body">
+          <div class="ents">
+            <span class="ent files" title="Declares local file access"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M7 3h7l5 5v13H7z" stroke-linejoin="round"/><path d="M14 3v5h5" stroke-linejoin="round"/></svg>Local files</span>
+          </div>
+          <div class="field">
+            <div class="field-l"><span class="k">corpusPath</span><span class="badge req">Required</span></div>
+            <div class="inp"><input value="~/dev/hdk-docs" /><button class="savebtn">Choose…</button></div>
+            <div class="field-note"><span class="ok">●</span> Indexed — 214 files · 3,180 chunks.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- wikipedia: collapsed -->
+      <div class="app">
+        <div class="app-hd">
+          <span class="app-ic"><img src="https://apps.lloyal.ai/v1/assets/lloyal/wikipedia/f4d17ecbba28b3e1906ea0dce3ad71245d53590642d07c413ebd24e8af86b8a9.png" alt="" /></span>
+          <span class="app-meta">
+            <div class="app-name">Wikipedia</div>
+            <div class="app-desc">Established facts, history, science, geography — encyclopedic knowledge.</div>
+          </span>
+          <span class="sw on"></span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </div>
+      </div>
+
+      <div class="install">
+        <span class="plus">＋</span>
+        <div>
+          <div class="it">Install an app</div>
+          <div class="is">From the signed channel · <code>apps.lloyal.ai</code></div>
+        </div>
+      </div>
+
+      <!-- Advanced — READ-ONLY model & runtime. Models are never user-switchable (would change tested app behaviour). -->
+      <div class="adv open">
+        <div class="adv-row">
+          <span class="at">Advanced</span>
+          <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </div>
+        <div class="adv-body">
+          <div class="irow"><span class="il">Model</span><span class="iv">Qwen3.5-4B</span></div>
+          <div class="irow"><span class="il">Size</span><span class="iv">4B · Q4_K_M</span></div>
+          <div class="irow"><span class="il">Reranker</span><span class="iv">Qwen3-Reranker-0.6B</span></div>
+          <div class="irow"><span class="il">Backend</span><span class="iv">Metal · auto</span></div>
+          <div class="irow"><span class="il">Context</span><span class="iv">32,768 tokens</span></div>
+        </div>
+        <div class="adv-note">Fixed to keep every app behaving exactly as tested · backend detected automatically.</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>
