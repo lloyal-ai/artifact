@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'node:path'
 import { totalmem } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { reduce } from '../src/tui-ink/reducer'
 import { initialState, type AppState } from '../src/tui-ink/state'
 import type { WorkflowEvent, Command } from '../src/tui-ink/events'
@@ -80,6 +81,15 @@ function spawnEngine(): void {
           payload: { type: 'submit_query', query: process.env.RR_AUTOQUERY, mode: 'flat' },
         })
       }
+      // Auto-accept the plan to drive a full research run (gated, for verification).
+      if (
+        process.env.RR_AUTOACCEPT &&
+        prevPhase !== 'plan_review' &&
+        appState.uiPhase === 'plan_review'
+      ) {
+        if (process.env.RR_DEBUG) console.log('[main->engine] auto accept_plan')
+        engine?.postMessage({ t: 'command', payload: { type: 'accept_plan' } })
+      }
     }
   })
   engine.on('exit', (code) => console.log('[engine] exited', code))
@@ -105,6 +115,24 @@ function createWindow(): void {
   // Surface renderer console in the terminal during dev (proves renderer-side reduce).
   if (process.env.RR_DEBUG) {
     win.webContents.on('console-message', (details) => console.log('[renderer]', details.message))
+  }
+
+  // Gated screenshot capture for headless UI verification.
+  if (process.env.RR_SHOT) {
+    let n = 0
+    const dir = process.env.RR_SHOT
+    const timer = setInterval(() => {
+      void win?.webContents
+        .capturePage()
+        .then((img) => {
+          const buf = img.toPNG()
+          const f = join(dir, `shot-${String(n++).padStart(2, '0')}.png`)
+          writeFileSync(f, buf)
+          console.log(`[shot] ${f} ${buf.length}b ${img.getSize().width}x${img.getSize().height}`)
+        })
+        .catch((e) => console.log('[shot] error', String(e)))
+    }, 4000)
+    win.on('closed', () => clearInterval(timer))
   }
 
   if (process.env.ELECTRON_RENDERER_URL) {

@@ -1,0 +1,210 @@
+import React from 'react'
+import type { AgentRuntime, AppState } from '../../tui-ink/state'
+import { dispatch } from '../bridge'
+import { IconChevron } from '../icons'
+import { SourceChips, WorkRows } from './Work'
+
+export const AGENT_COLORS = ['var(--a1)', 'var(--a2)', 'var(--a3)', 'var(--a4)', 'var(--a5)']
+export const agentColor = (i: number): string => AGENT_COLORS[i % AGENT_COLORS.length]
+
+/** The Asked beat — the run title. */
+export function QueryCard({ query }: { query: string }): React.ReactElement {
+  return (
+    <div className="card qcard">
+      <div className="q">{query}</div>
+    </div>
+  )
+}
+
+/** The Scouted beat — recon probed every source. */
+export function ScoutedCard({ state }: { state: AppState }): React.ReactElement {
+  const probes = state.reconAgentIds.length
+  return (
+    <div className="card" style={{ ['--kc' as string]: 'var(--cyan)' }}>
+      <div className="chead">
+        <span className="cbadge">◎</span>
+        <div className="ctitle">
+          <div className="t">Probed every source in parallel</div>
+          <div className="s">grounding which source covers the query before planning</div>
+        </div>
+        <span className="cstat">
+          <span>{probes} probes</span>
+          <span>{state.sourceCount} src</span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/** The Planned beat — interactive plan-review when uiPhase === plan_review. */
+export function PlanCard({ state }: { state: AppState }): React.ReactElement {
+  const plan = state.plan
+  if (!plan) return <></>
+  const interactive = state.uiPhase === 'plan_review'
+  const mode = state.mode ?? 'flat'
+  const sub =
+    mode === 'deep'
+      ? "each task's findings feed the next down the spine"
+      : 'all tasks fork from the shared context at once'
+  return (
+    <div className="card open" style={{ ['--kc' as string]: 'var(--violet)' }}>
+      <div className="chead">
+        <span className="cbadge">❖</span>
+        <div className="ctitle">
+          <div className="t">Research plan — {plan.tasks.length} tasks</div>
+          <div className="s">{sub}</div>
+        </div>
+        <IconChevron className="chev" />
+      </div>
+      <div className="plist">
+        {plan.tasks.map((t, i) => (
+          <div className="prow" key={i}>
+            <span className="n">{i + 1}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>{t.description}</span>
+            <span className="src">
+              <span className="d" style={{ background: agentColor(i) }} />
+              {t.app ?? 'auto'}
+            </span>
+          </div>
+        ))}
+        {interactive && (
+          <div className="pfoot">
+            <button className="btn primary" onClick={() => dispatch({ type: 'accept_plan' })}>
+              Start research
+            </button>
+            <button className="btn" onClick={() => dispatch({ type: 'edit_plan', query: state.query })}>
+              Edit plan
+            </button>
+            <button
+              className="btn"
+              onClick={() => dispatch({ type: 'change_mode', mode: mode === 'deep' ? 'flat' : 'deep' })}
+            >
+              {mode === 'deep' ? 'Switch to Parallel' : 'Switch to Deep'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function statusText(a: AgentRuntime): string {
+  switch (a.phase) {
+    case 'thinking':
+      return 'thinking'
+    case 'tool':
+      return 'using tools'
+    case 'content':
+      return 'writing'
+    case 'idle':
+      return 'starting'
+    default:
+      return 'working'
+  }
+}
+
+/** A research (or recon) agent card — the streaming centerpiece. */
+export function AgentCard({
+  agent,
+  colorIdx,
+  open,
+  title,
+  carry,
+}: {
+  agent: AgentRuntime
+  colorIdx: number
+  open: boolean
+  title?: string
+  carry?: React.ReactNode
+}): React.ReactElement {
+  const done = agent.phase === 'done'
+  const kc = agentColor(colorIdx)
+  const pill = done ? (
+    <span className="pill p-done">✓ done</span>
+  ) : (
+    <span className="pill p-live">
+      <span className="ld" />
+      {statusText(agent)}
+    </span>
+  )
+  return (
+    <div
+      className={`card ${done ? '' : 'live'} ${open ? 'open' : ''}`}
+      style={{ ['--kc' as string]: kc }}
+    >
+      <div className="chead">
+        <span className="cbadge">{agent.label}</span>
+        <div className="ctitle">
+          <div className="t">{title ?? agent.taskDescription ?? `Task ${(agent.taskIndex ?? 0) + 1}`}</div>
+          {agent.dependencyHint && <div className="s">{agent.dependencyHint}</div>}
+        </div>
+        {pill}
+        <span className="cstat">
+          <span>◍ {agent.toolCallCount}</span>
+          <span>🧠 {agent.tokenCount}</span>
+        </span>
+      </div>
+      {open && (
+        <div className="cbody">
+          {carry}
+          <WorkRows agent={agent} />
+          <SourceChips agent={agent} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The Synthesis beat. */
+export function SynthCard({ state }: { state: AppState }): React.ReactElement {
+  const s = state.synth
+  const mode = state.mode ?? 'flat'
+  const pill = s.done ? (
+    <span className="pill p-done">✓ done</span>
+  ) : s.open ? (
+    <span className="pill p-live" style={{ ['--kc' as string]: 'var(--syn)' }}>
+      <span className="ld" />
+      synthesizing
+    </span>
+  ) : (
+    <span className="pill p-queued">pending</span>
+  )
+  return (
+    <div className={`card ${s.open && !s.done ? 'live' : s.done ? '' : 'ghost'}`} style={{ ['--kc' as string]: 'var(--syn)' }}>
+      <div className="chead">
+        <span className="cbadge">∑</span>
+        <div className="ctitle">
+          <div className="t">Synthesis</div>
+          <div className="s">aggregates the whole {mode === 'deep' ? 'spine' : 'fan'} into one grounded answer</div>
+        </div>
+        {pill}
+      </div>
+      {s.open && s.buffer && (
+        <div className="cbody">
+          <div className="wthink" style={{ ['--kc' as string]: 'var(--syn)' }}>
+            {s.buffer}
+            {!s.done && <span className="caret" />}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The Answer beat — the grounded answer document. */
+export function AnswerCard({ answer }: { answer: string | null }): React.ReactElement {
+  if (!answer) {
+    return (
+      <div className="card acard">
+        <div className="ph">
+          your grounded answer lands here — every claim traceable to its source and the task that found it
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="card">
+      <div className="answer-body">{answer}</div>
+    </div>
+  )
+}
