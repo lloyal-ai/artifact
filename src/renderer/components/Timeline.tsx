@@ -8,6 +8,7 @@ import {
   PlanCard,
   QueryCard,
   ScoutedCard,
+  SpineEvent,
   SynthCard,
 } from './cards'
 
@@ -122,17 +123,10 @@ function buildBeats(s: AppState): BeatDef[] {
         kc: 'var(--accent)',
         knot: 'fill',
         node: (
-          <div className="card ghost" style={{ ['--kc' as string]: 'var(--accent)' }}>
-            <div className="chead">
-              <span className="cbadge" style={{ background: 'var(--accent)' }}>
-                ⑂
-              </span>
-              <div className="ctitle">
-                <div className="t">Forked {ids.length || s.plan?.tasks.length} agents from the shared context</div>
-                <div className="s">prefix-shared once · each researches its angle · converges at synthesis</div>
-              </div>
-            </div>
-          </div>
+          <SpineEvent
+            title={`Forked ${ids.length || s.plan?.tasks.length} agents with shared context`}
+            sub="prefix-shared once · each researches its angle · converges at synthesis"
+          />
         ),
       })
       ids.forEach((id, i) => {

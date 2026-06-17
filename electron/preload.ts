@@ -23,6 +23,10 @@ const api = {
   requestSnapshot(): Promise<unknown> {
     return ipcRenderer.invoke('engine:snapshot')
   },
+  /** Open an http(s) link in the system browser (answer markdown / source chips). */
+  openExternal(url: string): void {
+    void ipcRenderer.invoke('engine:open-external', url)
+  },
 }
 
 contextBridge.exposeInMainWorld('reasoning', api)

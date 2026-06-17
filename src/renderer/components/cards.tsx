@@ -2,10 +2,34 @@ import React from 'react'
 import type { AgentRuntime, AppState } from '../../tui-ink/state'
 import { dispatch } from '../bridge'
 import { IconChevron } from '../icons'
+import { Markdown } from './Markdown'
 import { SourceChips, WorkRows } from './Work'
 
 export const AGENT_COLORS = ['var(--a1)', 'var(--a2)', 'var(--a3)', 'var(--a4)', 'var(--a5)']
 export const agentColor = (i: number): string => AGENT_COLORS[i % AGENT_COLORS.length]
+
+/**
+ * A centred milestone on the spine — the spine runs visibly through it (ghost
+ * background). Reused for the research fork (and adoptable for synth/answer).
+ */
+export function SpineEvent({
+  title,
+  sub,
+  kc = 'var(--accent)',
+}: {
+  title: string
+  sub?: string
+  kc?: string
+}): React.ReactElement {
+  return (
+    <div className="card ghost spine-event" style={{ ['--kc' as string]: kc }}>
+      <div className="se-body">
+        <div className="se-title">{title}</div>
+        {sub && <div className="se-sub">{sub}</div>}
+      </div>
+    </div>
+  )
+}
 
 /** The Asked beat — the run title. */
 export function QueryCard({ query }: { query: string }): React.ReactElement {
@@ -63,7 +87,7 @@ export function PlanCard({ state }: { state: AppState }): React.ReactElement {
             <span style={{ flex: 1, minWidth: 0 }}>{t.description}</span>
             <span className="src">
               <span className="d" style={{ background: agentColor(i) }} />
-              {t.app ?? 'auto'}
+              {t.app ?? ''}
             </span>
           </div>
         ))}
@@ -127,23 +151,24 @@ export function AgentCard({
       {statusText(agent)}
     </span>
   )
+  const task = agent.taskDescription ?? agent.dependencyHint
   return (
     <div
-      className={`card ${done ? '' : 'live'} ${open ? 'open' : ''}`}
+      className={`card agent ${done ? '' : 'live'} ${open ? 'open' : ''}`}
       style={{ ['--kc' as string]: kc }}
     >
       <div className="chead">
         <span className="cbadge">{agent.label}</span>
         <div className="ctitle">
-          <div className="t">{title ?? agent.taskDescription ?? `Task ${(agent.taskIndex ?? 0) + 1}`}</div>
-          {agent.dependencyHint && <div className="s">{agent.dependencyHint}</div>}
+          <div className="t">{title ?? `Agent ${(agent.taskIndex ?? colorIdx) + 1}`}</div>
         </div>
         {pill}
         <span className="cstat">
-          <span>◍ {agent.toolCallCount}</span>
-          <span>🧠 {agent.tokenCount}</span>
+          <span>{agent.toolCallCount} tools</span>
+          <span>{agent.tokenCount.toLocaleString()} tok</span>
         </span>
       </div>
+      {task && <div className="ctask">{task}</div>}
       {open && (
         <div className="cbody">
           {carry}
@@ -191,6 +216,15 @@ export function SynthCard({ state }: { state: AppState }): React.ReactElement {
   )
 }
 
+/**
+ * The synth output can lead with a `<think>…</think>` block (Qwen's chat
+ * template emits one — empty even when thinking is off). It belongs in the live
+ * synth stream, never in the final grounded answer, so strip a leading block.
+ */
+function stripThink(text: string): string {
+  return text.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, '')
+}
+
 /** The Answer beat — the grounded answer document. */
 export function AnswerCard({ answer }: { answer: string | null }): React.ReactElement {
   if (!answer) {
@@ -204,7 +238,9 @@ export function AnswerCard({ answer }: { answer: string | null }): React.ReactEl
   }
   return (
     <div className="card">
-      <div className="answer-body">{answer}</div>
+      <div className="answer-body md">
+        <Markdown text={stripThink(answer)} />
+      </div>
     </div>
   )
 }

@@ -35,10 +35,9 @@ function Welcome(): React.ReactElement {
       <div style={{ maxWidth: 720, margin: '14vh auto 0', textAlign: 'center' }}>
         <div
           style={{
-            fontFamily: 'var(--serif)',
-            fontSize: 30,
-            fontWeight: 500,
-            letterSpacing: '-0.01em',
+            fontSize: 28,
+            fontWeight: 600,
+            letterSpacing: '-0.02em',
             lineHeight: 1.3,
           }}
         >

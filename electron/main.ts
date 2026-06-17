@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, utilityProcess, type UtilityProcess } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'node:path'
 import { totalmem } from 'node:os'
 import { writeFileSync } from 'node:fs'
@@ -24,6 +24,16 @@ import type { WorkflowEvent, Command } from '../src/tui-ink/events'
  * the `seq` it reflects, giving the renderer a consistent cut (apply seq >
  * snapshot.seq, skip the rest) — no replay gap, no double-apply.
  */
+
+/** Only http(s) links may leave the app — drops file:/javascript:/custom schemes. */
+function isExternalUrl(url: string): boolean {
+  try {
+    const p = new URL(url).protocol
+    return p === 'http:' || p === 'https:'
+  } catch {
+    return false
+  }
+}
 
 let win: BrowserWindow | null = null
 let engine: UtilityProcess | null = null
@@ -112,6 +122,19 @@ function createWindow(): void {
   })
   win.once('ready-to-show', () => win?.show())
 
+  // Links in the answer/sources are http(s) → open in the system browser, never
+  // navigate the renderer away from the app. Any other scheme is dropped.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalUrl(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url !== win?.webContents.getURL()) {
+      e.preventDefault()
+      if (isExternalUrl(url)) void shell.openExternal(url)
+    }
+  })
+
   // Surface renderer console in the terminal during dev (proves renderer-side reduce).
   if (process.env.RR_DEBUG) {
     win.webContents.on('console-message', (details) => console.log('[renderer]', details.message))
@@ -152,6 +175,10 @@ app.whenReady().then(() => {
   })
   // renderer (re)load → consistent cut: reduced state + the seq it reflects.
   ipcMain.handle('engine:snapshot', () => ({ state: appState, seq }))
+  // renderer asks to open a link (answer markdown / source chip) in the browser.
+  ipcMain.handle('engine:open-external', (_e, url: unknown) => {
+    if (typeof url === 'string' && isExternalUrl(url)) void shell.openExternal(url)
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
