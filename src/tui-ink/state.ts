@@ -175,6 +175,42 @@ export interface Toast {
   id: number;
 }
 
+/** A signed entitlement disclosed by an app's catalog metadata. The `key`
+ *  maps to a privacy-label-style pill (network → Internet, etc.); `label`
+ *  is the human-readable name carried alongside it. */
+export interface AppEntitlement {
+  key: string;
+  label: string;
+}
+
+/** A view-ready descriptor for one installed (registry-enabled) AgentApp.
+ *  Joins the app's local manifest with its signed catalog metadata
+ *  (title/iconUrl/entitlements from apps.lloyal.ai) so the Settings drawer
+ *  can render the app card, its tools, its config schema, and its current
+ *  stored config. Built engine-side by main.ts and forwarded via the
+ *  `apps:state` event; the reducer drops it whole into `AppState.apps`. */
+export interface AppDescriptor {
+  /** manifest.name (e.g. "web") — routing key + config-store key. */
+  name: string;
+  /** catalog metadata.title ?? manifest.hints?.shortName ?? protocol.name */
+  title: string;
+  /** manifest.hints?.description ?? protocol.useWhen */
+  description: string;
+  /** catalog metadata.iconUrl (apps.lloyal.ai asset) — else undefined → glyph. */
+  iconUrl?: string;
+  /** manifest.protocol.tools — the protocol's tool-name list. */
+  tools: string[];
+  /** catalog metadata.entitlements — capability keys
+   *  (network|data-egress|local-files|credentials). */
+  entitlements: string[];
+  /** manifest.configSchema (JSON Schema) — fields render read-only this increment. */
+  configSchema?: unknown;
+  /** Current stored config from configStore.get(name). */
+  config: Record<string, unknown>;
+  /** Registry participation/enabled state. */
+  enabled: boolean;
+}
+
 export interface AppState {
   query: string;
   warm: boolean;
@@ -267,6 +303,11 @@ export interface AppState {
    *  on reconfigure (`set_corpus_path`/`set_tavily_key`) — a config
    *  change is a strong signal of intent to use the app. */
   participation: Record<string, boolean>;
+  /** Installed AgentApps surfaced into the renderer — one descriptor per
+   *  registry-enabled app, joined with its signed catalog metadata. Drives
+   *  the Settings drawer. Re-emitted whole on boot completion and after
+   *  every registry enable/disable/config change. */
+  apps: AppDescriptor[];
 }
 
 export const initialState: AppState = {
@@ -304,4 +345,5 @@ export const initialState: AppState = {
   corpusStatus: null,
   bootError: null,
   participation: {},
+  apps: [],
 };

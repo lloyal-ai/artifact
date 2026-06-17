@@ -21,6 +21,16 @@ export const IconDone = svg(<path d="M5 12l4 4L19 6" strokeLinecap="round" strok
 export const IconChevron = svg(<path d="m6 9 6 6 6-6" />)
 export const IconSend = svg(<path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />, 2.4)
 export const IconList = svg(<path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />)
+export const IconSettings = svg(
+  <>
+    <circle cx="12" cy="12" r="3.2" />
+    <path
+      d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"
+      strokeLinecap="round"
+    />
+  </>,
+  1.9,
+)
 
 /** Tool name → work-row icon. */
 export function toolIcon(tool: string): (p: P) => React.ReactElement {

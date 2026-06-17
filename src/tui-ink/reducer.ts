@@ -256,6 +256,7 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
         toast: state.toast,
         scrollback: state.scrollback,
         participation: state.participation,
+        apps: state.apps,
         query: ev.query,
         warm: ev.warm,
         phase: 'plan',
@@ -471,6 +472,12 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
       };
     }
 
+    case 'apps:state':
+      // Whole-replace the installed-AgentApps snapshot. Display-only — drives
+      // the Settings drawer. Emitted on boot completion + every registry
+      // enable/disable/config change.
+      return { ...state, apps: ev.apps };
+
     case 'preflight:start': {
       // Pre-flight recon runs BEFORE the planner, so it's the first event of a
       // multi-app query. Reset to a clean run (like the `query` event does) and
@@ -492,6 +499,7 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
         scrollback: state.scrollback,
         corpusStatus: state.corpusStatus,
         participation: state.participation,
+        apps: state.apps,
         query: ev.query,
         uiPhase: 'discovering',
         phase: 'recon',

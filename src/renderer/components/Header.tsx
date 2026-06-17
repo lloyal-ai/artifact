@@ -1,10 +1,16 @@
 import React from 'react'
 import type { AppState } from '../../tui-ink/state'
 import { dispatch } from '../bridge'
-import { IconChevron, IconList, IconSearch } from '../icons'
+import { IconChevron, IconList, IconSearch, IconSettings } from '../icons'
 import { Gauge } from './Gauge'
 
-export function Header({ state }: { state: AppState }): React.ReactElement {
+export function Header({
+  state,
+  onOpenSettings,
+}: {
+  state: AppState
+  onOpenSettings: () => void
+}): React.ReactElement {
   const mode = state.mode ?? 'flat'
   const setMode = (m: 'flat' | 'deep'): void => {
     if (m !== mode) dispatch({ type: 'change_mode', mode: m })
@@ -52,6 +58,9 @@ export function Header({ state }: { state: AppState }): React.ReactElement {
       </button>
       <button className="iconbtn" title="Inspect raw trace">
         <IconList />
+      </button>
+      <button className="iconbtn" title="Settings" onClick={onOpenSettings}>
+        <IconSettings />
       </button>
     </div>
   )

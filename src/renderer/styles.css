@@ -264,3 +264,93 @@ input { font-family: inherit; }
 .booterr b { color: var(--hot); }
 .bootspin { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -3px; margin-right: 8px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   Settings slide-over — installed AgentApps + read-only Advanced.
+   Promoted verbatim from design/config-mock.html (settled). Apps come
+   from the signed channel; this drawer renders them from their manifests
+   joined with signed catalog metadata. Config fields are READ-ONLY in
+   this increment — only the enable toggle is interactive.
+   ============================================================ */
+.scrim { position: fixed; inset: 0; background: rgba(6,8,13,0.62); backdrop-filter: blur(3px); z-index: 40; }
+.panel { position: fixed; top: 0; right: 0; bottom: 0; width: 468px; background: var(--bg-1);
+  border-left: 1px solid var(--line); box-shadow: var(--shadow); display: flex; flex-direction: column; z-index: 41; }
+.panel-hd { display: flex; align-items: baseline; gap: 12px; padding: 22px 24px 18px; border-bottom: 1px solid var(--line); }
+.panel-hd .t { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; color: var(--ink); }
+.panel-hd .sub { font-size: 13px; color: var(--ink-3); }
+.panel-hd .x { margin-left: auto; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+  color: var(--ink-2); background: var(--bg-3); border: 0; cursor: pointer; font-size: 15px; }
+.panel-bd { overflow-y: auto; padding: 18px 24px 30px; }
+
+/* section sub-head — "Apps", "Advanced" are peers */
+.sec-head { display: flex; align-items: baseline; gap: 9px; margin: 2px 2px 15px; }
+.sec-head .sh-t { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; color: var(--ink); }
+.sec-head .sh-s { font-size: 12.5px; color: var(--ink-3); }
+
+/* ── App card — collapsed by default (config field count is unpredictable) ── */
+.app { border: 1px solid var(--line); border-radius: 14px; background: var(--bg-2); margin-bottom: 12px; overflow: hidden; }
+.app-hd { display: flex; align-items: center; gap: 14px; padding: 16px 16px; cursor: pointer; }
+/* icon tile — fallback glyph on grey when an app has no signed iconUrl */
+.app-ic { width: 46px; height: 46px; border-radius: 12px; background: var(--bg-3); display: grid; place-items: center; color: var(--ink); flex: none; overflow: hidden; }
+.app-ic svg { width: 22px; height: 22px; }
+.app-ic img { width: 100%; height: 100%; object-fit: cover; }
+.app-meta { min-width: 0; flex: 1; }
+.app-name { font-size: 16.5px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.app-desc { font-size: 14px; color: var(--ink-2); margin-top: 3px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sw { width: 42px; height: 24px; border-radius: 999px; background: var(--bg-4); position: relative; cursor: pointer; flex: none; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--ink-2); transition: transform .15s; }
+.sw.on { background: color-mix(in srgb, var(--accent) 60%, var(--bg-4)); }
+.sw.on::after { transform: translateX(18px); background: #07120d; }
+.chev { color: var(--ink-3); flex: none; transition: transform .15s; }
+.chev svg { width: 18px; height: 18px; display: block; }
+.app.open .chev { transform: rotate(90deg); }
+
+/* expanded body: tools + config fields (generated from configSchema) */
+.app-body { border-top: 1px solid var(--line); padding: 4px 16px 16px; }
+/* entitlement pills — signed capability disclosure (uniform neutral tokens) */
+.ents { display: flex; flex-wrap: wrap; gap: 8px; padding: 15px 0 6px; }
+.ent {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 600; letter-spacing: -0.005em;
+  color: #dfe4ee;
+  background: #2c3446;
+  border: 0; border-radius: 980px; padding: 5px 12px 5px 10px;
+}
+.ent svg { width: 15px; height: 15px; color: #6fa3ef; flex: none; }
+
+.field { padding: 10px 0; }
+.field + .field { border-top: 1px solid var(--line); }
+.field-l { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+.field-l .k { font-size: 14.5px; color: var(--ink); font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
+.field-l .fl { font-size: 14px; color: var(--ink); font-weight: 600; }
+/* select-style control (read-only display of the current value this increment) */
+.sel { display: flex; align-items: center; width: 100%; font-size: 14px; font-weight: 550; color: var(--ink);
+  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 9px; padding: 10px 12px; }
+.sel .sc { margin-left: auto; color: var(--ink-3); display: flex; }
+.sel .sc svg { width: 16px; height: 16px; }
+.field-l .badge { font-size: 10.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; border: 0;
+  background: var(--bg-3); color: var(--ink-3); }
+.field-note { font-size: 13px; color: var(--ink-3); margin-top: 8px; }
+.nocfg { font-size: 13.5px; color: var(--ink-3); padding: 14px 0 4px; }
+
+/* install affordance — apps come from the signed channel, never hardwired */
+.install { display: flex; align-items: center; gap: 13px; padding: 15px 16px; border: 1px dashed var(--line-2); border-radius: 14px; color: var(--ink-2); cursor: pointer; margin-top: 4px; }
+.install:hover { border-color: var(--accent); }
+.install .plus { width: 36px; height: 36px; border-radius: 10px; background: var(--bg-3); display: grid; place-items: center; font-size: 20px; color: var(--ink); }
+.install .it { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.install .is { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+.install .is code { font-family: ui-monospace, Menlo, monospace; }
+
+/* Advanced — read-only model/runtime info, never editable */
+.adv { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 18px; }
+.adv-row { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.adv-row .at { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; color: var(--ink); }
+.adv-row .as { font-size: 13px; color: var(--ink-3); margin-left: auto; }
+.adv-row .chev { color: var(--ink-3); transition: transform .15s; margin-left: auto; }
+.adv.open .adv-row .chev { transform: rotate(90deg); }
+.adv-body { margin-top: 14px; border-radius: 12px; background: color-mix(in srgb, var(--bg-1) 55%, var(--bg-2)); padding: 2px 15px; }
+.irow { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 12px 0; font-size: 13.5px; }
+.irow + .irow { border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.irow .il { color: var(--ink-3); }
+.irow .iv { color: var(--ink); font-weight: 550; font-variant-numeric: tabular-nums; }
+.adv-note { font-size: 12.5px; color: var(--ink-4); padding: 13px 1px 6px; line-height: 1.5; }

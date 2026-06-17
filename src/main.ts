@@ -54,6 +54,8 @@ import {
   createAppRegistry,
 } from "@lloyal-labs/rig";
 import type { PlanResult, Reranker } from "@lloyal-labs/rig";
+import type { AppRegistry, AppConfigStore } from "@lloyal-labs/lloyal-agents";
+import type { AppDescriptor } from "./tui-ink/state";
 import { createReranker } from "@lloyal-labs/rig/node";
 import { createWebApp } from "@lloyal-labs/web-app";
 import { createCorpusApp } from "@lloyal-labs/corpus-app";
@@ -259,6 +261,95 @@ function buildPlannerContext(apps: readonly App[]): string {
     }
   }
   return lines.join("\n");
+}
+
+// ── Installed-AgentApps surfacing (Settings drawer) ──────────────
+//
+// The Settings drawer renders one card per registry-enabled app, joining
+// the app's local manifest with its SIGNED catalog metadata
+// (title/iconUrl/entitlements from apps.lloyal.ai). The catalog is fetched
+// once, best-effort, and cached for the process lifetime — display-only, so
+// any failure falls back to manifest-only fields (title = protocol.name, no
+// iconUrl, entitlements = []). buildAppDescriptors() runs after boot and
+// after every registry enable/disable/config change; the result is forwarded
+// to the renderer via the `apps:state` StepEvent.
+
+/** Shape of the public signed catalog at apps.lloyal.ai. Catalog names are
+ *  SCOPED (`lloyal/web`); manifest names are short (`web`). We match by the
+ *  trailing path segment. Only the display metadata is read here. */
+interface CatalogEntry {
+  name: string;
+  metadata?: {
+    title?: string;
+    iconUrl?: string;
+    entitlements?: string[];
+  };
+}
+interface Catalog {
+  entries: CatalogEntry[];
+}
+
+const APPS_CATALOG_URL = "https://apps.lloyal.ai/v1/catalog.json";
+
+// Process-lifetime cache: null = never fetched; the fetch is attempted once.
+// On failure we cache an empty catalog so we don't re-hit the network on every
+// emit (descriptors then fall back to manifest-only fields).
+let catalogCache: Catalog | null = null;
+
+/** Fetch + cache the signed catalog once. Best-effort: any failure caches an
+ *  empty catalog so subsequent emits stay manifest-only without re-fetching. */
+async function getCatalog(): Promise<Catalog> {
+  if (catalogCache) return catalogCache;
+  try {
+    const res = await fetch(APPS_CATALOG_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = (await res.json()) as Partial<Catalog>;
+    catalogCache = { entries: Array.isArray(json.entries) ? json.entries : [] };
+  } catch {
+    catalogCache = { entries: [] };
+  }
+  return catalogCache;
+}
+
+/** Trailing path segment of a (possibly scoped) catalog name: `lloyal/web` → `web`. */
+function shortCatalogName(name: string): string {
+  const i = name.lastIndexOf("/");
+  return i === -1 ? name : name.slice(i + 1);
+}
+
+/** Build view-ready descriptors for every registry-enabled app, joining the
+ *  manifest with signed catalog metadata. Returns an empty array if no apps
+ *  are enabled. Display-only — never throws on a catalog miss. */
+function* buildAppDescriptors(
+  registry: AppRegistry,
+  configStore: AppConfigStore,
+): Operation<AppDescriptor[]> {
+  const catalog = yield* call(() => getCatalog());
+  const byShortName = new Map<string, CatalogEntry["metadata"]>();
+  for (const entry of catalog.entries) {
+    byShortName.set(shortCatalogName(entry.name), entry.metadata);
+  }
+
+  const descriptors: AppDescriptor[] = [];
+  for (const app of registry.enabled()) {
+    const { manifest } = app;
+    const meta = byShortName.get(manifest.name);
+    const config = (yield* configStore.get(manifest.name)) ?? {};
+    descriptors.push({
+      name: manifest.name,
+      title:
+        meta?.title ?? manifest.hints?.shortName ?? manifest.protocol.name,
+      description:
+        manifest.hints?.description ?? manifest.protocol.useWhen,
+      iconUrl: meta?.iconUrl,
+      tools: [...manifest.protocol.tools],
+      entitlements: meta?.entitlements ?? [],
+      configSchema: manifest.configSchema,
+      config,
+      enabled: true,
+    });
+  }
+  return descriptors;
 }
 
 // ── Clarify helpers ──────────────────────────────────────────────
@@ -738,6 +829,18 @@ main(function* () {
         });
       }
 
+      // Surface the installed AgentApps into the renderer for the Settings
+      // drawer. Closes over registry + configStore + events; re-call after
+      // every registry enable/disable/config change so the drawer stays in
+      // sync. Display-only (best-effort catalog join), so it never blocks boot.
+      function* emitApps(): Operation<void> {
+        const apps = yield* buildAppDescriptors(registry, configStore);
+        yield* events.send({ type: "apps:state", apps });
+      }
+
+      // Emit once boot completes (web/corpus enabled).
+      yield* emitApps();
+
       uiChannel.send({ type: "weights:done" });
       uiChannel.send({ type: "ui:composer" });
 
@@ -958,6 +1061,9 @@ main(function* () {
               gitignored: saved.gitignored,
               skipped: saved.skipped,
             });
+            // Web app was re-enabled with the new key + config — refresh the
+            // Settings drawer.
+            yield* emitApps();
           } else if (cmd.type === "set_output_dir") {
             // Resolve at the boundary: ~ expansion + relative→absolute happen
             // here so the persisted form in harness.json is always absolute.
@@ -1046,6 +1152,9 @@ main(function* () {
               gitignored: saved.gitignored,
               skipped: saved.skipped,
             });
+            // Corpus app was enabled/disabled + reconfigured — refresh the
+            // Settings drawer.
+            yield* emitApps();
             if (resolved) yield* events.send({ type: "ui:composer" });
           } else if (cmd.type === "submit_query") {
             if (registry.enabled().length === 0) {
