@@ -5,3 +5,6 @@ trace-*.jsonl
 *.tgz
 .DS_Store
 scripts/
+
+# electron-vite build output
+out/

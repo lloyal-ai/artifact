@@ -2,6 +2,7 @@
   "name": "reasoning.run",
   "version": "0.3.1",
   "description": "A private reasoner for your terminal. Direct conversation or grounded multi-agent research, GPU-native and fully local. No API keys, no inference servers.",
+  "main": "out/main/index.js",
   "bin": {
     "reasoning.run": "bin/run.js"
   },
@@ -12,6 +13,10 @@
     "README.md"
   ],
   "scripts": {
+    "dev": "electron-vite dev",
+    "dev:watch": "electron-vite dev --watch",
+    "app:build": "electron-vite build",
+    "app:preview": "electron-vite preview",
     "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --loader:.eta=text --outfile=dist/bundle.mjs --minify --legal-comments=none",
     "build:watch": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --loader:.eta=text --outfile=dist/bundle.mjs --watch",
     "start": "npm run build && node bin/run.js",
@@ -31,14 +36,21 @@
     "eta": "^4.5.1",
     "ignore": "^7.0.5",
     "ink": "^7.0.1",
-    "react": "^19.2.5"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
     "@types/react": "^19.2.14",
-    "esbuild": "^0.28.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^42.0.0",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "^5.0.0",
+    "esbuild": "^0.27.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0"
   },
   "engines": {
     "node": ">=22"
