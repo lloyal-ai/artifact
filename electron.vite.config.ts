@@ -12,12 +12,7 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     build: {
-      rollupOptions: {
-        input: {
-          index: resolve(__dirname, 'electron/main.ts'),
-          'engine-host': resolve(__dirname, 'electron/engine-host.ts'),
-        },
-      },
+      rollupOptions: { input: { index: resolve(__dirname, 'electron/main.ts') } },
     },
   },
   preload: {
@@ -27,6 +22,15 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react()],
+    // The renderer runs the shared `reduce`, whose graph imports `path-utils.ts`
+    // (node:os/node:path). Alias those to browser-safe shims so the sandboxed
+    // renderer can reduce events itself. The engine keeps real node via esbuild.
+    resolve: {
+      alias: {
+        'node:os': resolve(__dirname, 'src/renderer/shims/node-os.ts'),
+        'node:path': resolve(__dirname, 'src/renderer/shims/node-path.ts'),
+      },
+    },
     build: {
       rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') },
     },

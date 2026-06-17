@@ -1,33 +1,86 @@
 import { app, BrowserWindow, ipcMain, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'node:path'
+import { totalmem } from 'node:os'
+import { reduce } from '../src/tui-ink/reducer'
+import { initialState, type AppState } from '../src/tui-ink/state'
+import type { WorkflowEvent, Command } from '../src/tui-ink/events'
 
 /**
- * Electron MAIN process — a thin host: owns the window, spawns the engine in a
- * `utilityProcess`, and relays messages renderer ⇄ engine. Heavy work (native
- * inference via lloyal.node, the Effection harness) lives in the engine process
- * so the UI thread never blocks.
+ * Electron MAIN process — a thin host: owns the window, spawns the harness in a
+ * `utilityProcess`, and bridges renderer ⇄ engine. Heavy work (native inference
+ * via lloyal.node, the Effection harness) lives in the engine process so the UI
+ * thread never blocks.
  *
- * Phase 0: relays a generic message envelope. Phase 1 adds the AppState mirror
- * (running the same pure `reduce` over the event stream) for snapshot-on-load.
+ * The engine is the existing esbuild bundle (`dist/bundle.mjs`) run in RR_BRIDGE
+ * mode: it streams WorkflowEvents over its parentPort and accepts Commands.
+ *
+ * Streaming model (matches the Ink TUI verbatim): main FORWARDS each raw
+ * WorkflowEvent to the renderer, which runs the same pure `reduce` itself — so
+ * `agent:produce` token deltas accumulate renderer-side and only the small
+ * event crosses IPC (never the growing transcript). Main also folds every event
+ * into its own `appState` mirror purely to answer ONE snapshot per renderer
+ * (re)load. Each forwarded event carries a monotonic `seq`; the snapshot reports
+ * the `seq` it reflects, giving the renderer a consistent cut (apply seq >
+ * snapshot.seq, skip the rest) — no replay gap, no double-apply.
  */
 
 let win: BrowserWindow | null = null
 let engine: UtilityProcess | null = null
+let appState: AppState = initialState
+let seq = 0
 
 function spawnEngine(): void {
-  // electron-vite emits both main inputs into out/main/, so the engine host is
-  // a sibling of this file at runtime.
-  const enginePath = join(__dirname, 'engine-host.js')
-  engine = utilityProcess.fork(enginePath, [], {
+  // out/main/index.js → <projectRoot>/dist/bundle.mjs (the esbuild engine).
+  const enginePath = join(__dirname, '../../dist/bundle.mjs')
+  const configPath = join(app.getPath('userData'), 'harness.json')
+  const outputDir = join(app.getPath('documents'), 'reasoning.run')
+
+  // RR_BRIDGE → harness streams over parentPort instead of mounting Ink.
+  // GPU: macOS auto-selects the Metal binary (default darwin-arm64; no LLOYAL_GPU).
+  const env = { ...process.env, RR_BRIDGE: '1' }
+  if (app.isPackaged && !process.env.XDG_CACHE_HOME) {
+    // Packaged: no writable cwd and no ~/.cache guarantee — redirect the model
+    // cache under userData (models.ts cacheDir() honors XDG_CACHE_HOME). In dev
+    // we leave it default so the already-warm ~/.cache model is reused; a
+    // pre-set XDG_CACHE_HOME (user or gate harness) is respected.
+    env.XDG_CACHE_HOME = join(app.getPath('userData'), 'cache')
+  }
+
+  // Memory gate (advisory): the 4B-Q4 LLM + reranker + KV want headroom.
+  const totalGiB = totalmem() / 1024 ** 3
+  if (totalGiB < 10) {
+    console.warn(`[main] low memory: ${totalGiB.toFixed(1)} GB — performance may be degraded`)
+  }
+
+  engine = utilityProcess.fork(enginePath, ['--config', configPath, '--output-dir', outputDir], {
     serviceName: 'reasoning-engine',
     stdio: 'pipe',
+    env,
   })
   engine.stdout?.on('data', (d) => console.log('[engine]', d.toString().trimEnd()))
   engine.stderr?.on('data', (d) => console.error('[engine]', d.toString().trimEnd()))
-  engine.on('message', (msg) => {
-    if (process.env.RR_DEBUG) console.log('[main<-engine]', JSON.stringify(msg))
-    // engine → renderer
-    win?.webContents.send('engine:message', msg)
+  engine.on('message', (msg: { t?: string; payload?: WorkflowEvent }) => {
+    if (msg?.t === 'ready') {
+      if (process.env.RR_DEBUG) console.log('[main] engine ready')
+      return
+    }
+    if (msg?.t === 'event' && msg.payload) {
+      const prevPhase = appState.uiPhase
+      seq++
+      appState = reduce(appState, msg.payload)
+      // Forward the raw event (+ seq) — the renderer reduces it itself.
+      win?.webContents.send('engine:event', { seq, ev: msg.payload })
+      if (process.env.RR_DEBUG) console.log('[main<-engine]', msg.payload.type, '→ uiPhase:', appState.uiPhase)
+      // Gated round-trip self-test: fire a submit_query the moment the engine
+      // reaches the composer, to prove renderer→engine→planner→back headlessly.
+      if (process.env.RR_AUTOQUERY && prevPhase !== 'composer' && appState.uiPhase === 'composer') {
+        if (process.env.RR_DEBUG) console.log('[main->engine] auto submit_query:', process.env.RR_AUTOQUERY)
+        engine?.postMessage({
+          t: 'command',
+          payload: { type: 'submit_query', query: process.env.RR_AUTOQUERY, mode: 'flat' },
+        })
+      }
+    }
   })
   engine.on('exit', (code) => console.log('[engine] exited', code))
 }
@@ -49,7 +102,11 @@ function createWindow(): void {
   })
   win.once('ready-to-show', () => win?.show())
 
-  // electron-vite sets ELECTRON_RENDERER_URL in dev (the Vite dev server).
+  // Surface renderer console in the terminal during dev (proves renderer-side reduce).
+  if (process.env.RR_DEBUG) {
+    win.webContents.on('console-message', (details) => console.log('[renderer]', details.message))
+  }
+
   if (process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
@@ -61,12 +118,12 @@ app.whenReady().then(() => {
   spawnEngine()
   createWindow()
 
-  // renderer → engine
-  ipcMain.on('engine:command', (_e, payload) => {
-    engine?.postMessage({ t: 'command', payload })
+  // renderer → engine (Command)
+  ipcMain.on('engine:command', (_e, command: Command) => {
+    engine?.postMessage({ t: 'command', payload: command })
   })
-  // Phase 1: return the mirrored AppState snapshot here.
-  ipcMain.handle('engine:snapshot', () => null)
+  // renderer (re)load → consistent cut: reduced state + the seq it reflects.
+  ipcMain.handle('engine:snapshot', () => ({ state: appState, seq }))
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -287,11 +287,14 @@ const errorStack = (err: unknown): string =>
 // ── Main ─────────────────────────────────────────────────────────
 
 main(function* () {
-  const useInk = isTTY && !jsonlMode;
+  // The Electron utilityProcess host sets RR_BRIDGE — the harness streams its
+  // WorkflowEvents over process.parentPort instead of mounting Ink/JSONL.
+  const bridgeMode = !!process.env.RR_BRIDGE;
+  const useInk = isTTY && !jsonlMode && !bridgeMode;
 
   // Pre-boot logs only in non-Ink mode — Ink mounts ASAP in TTY mode and
   // handles download/loading UI itself.
-  if (!useInk) {
+  if (!useInk && !bridgeMode) {
     log();
     log(`${c.bold}  Deep Research${c.reset}`);
     log();
@@ -348,6 +351,39 @@ main(function* () {
     }
     inkInstance = mod.render(uiChannel, (cmd) => commands.send(cmd), bootstrap);
     yield* ensure(() => { inkInstance?.unmount(); });
+  } else if (bridgeMode) {
+    // Electron utilityProcess: bridge the EventBus + Command signal over the
+    // parentPort MessagePort (engine ⇄ main ⇄ renderer). Same contract as Ink:
+    // subscribe → post every WorkflowEvent; inbound 'command' → commands.send.
+    const pp = (process as unknown as {
+      parentPort: {
+        postMessage(m: unknown): void;
+        on(e: "message", cb: (ev: { data: unknown }) => void): void;
+        start?(): void;
+      };
+    }).parentPort;
+    uiChannel.subscribe((ev) => pp.postMessage({ t: "event", payload: ev }));
+    pp.on("message", (e) => {
+      const m = e.data as { t?: string; payload?: unknown };
+      if (m?.t === "command") commands.send(m.payload as Command);
+    });
+    pp.start?.();
+    // No Ink/stdin handle holds the libuv loop in bridge mode, so the suspended
+    // command loop would let Node drain and exit. Keep the process alive while
+    // it waits for commands; cleared on exit.
+    const keepAlive = setInterval(() => {}, 1 << 30);
+    process.on("exit", () => clearInterval(keepAlive));
+    // Seed bootstrap exactly like Ink's render(bootstrap) does.
+    uiChannel.send({
+      type: "config:loaded",
+      config: liveConfig,
+      origin: liveOrigin,
+      path: loaded.path,
+    });
+    if (initialPlanEntries.length > 0) {
+      uiChannel.send({ type: "download:plan", entries: initialPlanEntries });
+    }
+    pp.postMessage({ t: "ready" });
   } else {
     // Non-TTY / JSONL: drain the bus to JSONL stdout. Synchronous subscribe
     // replays any already-buffered events immediately.
@@ -717,7 +753,9 @@ main(function* () {
       }
 
       // ── JSONL / --query scripted path ──────────────────────────
-      if (!useInk) {
+      // Bridge mode (Electron) drives the interactive command loop below, so
+      // it skips this one-shot scripted path even though useInk is false.
+      if (!useInk && !bridgeMode) {
         if (!initialQuery) {
           process.stderr.write("Non-TTY mode requires --query.\n");
           process.exit(2);
