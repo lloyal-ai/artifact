@@ -88,44 +88,236 @@ const Chevron = (): React.ReactElement => (
   </span>
 )
 
-// ── Config-field rendering (read-only this increment) ────────────
+// ── Config-field rendering (editable) ────────────────────────────
 
-interface ConfigField {
+interface ConfigFieldSpec {
   key: string
   /** REQUIRED / SECRET / OPTIONAL badge derived from the JSON Schema. */
   badge: 'REQUIRED' | 'SECRET' | 'OPTIONAL'
-  /** Current stored value, masked for secrets. */
-  value: string
+  /** True when `x-secret` — render masked with a reveal toggle. */
+  secret: boolean
+  /** True when the property name implies a filesystem path — render a
+   *  "Choose…" affordance alongside the text input. */
+  pathLike: boolean
+  /** Current stored value (raw string). */
+  stored: string
 }
 
-function fieldsOf(descriptor: AppDescriptor): ConfigField[] {
-  const schema = descriptor.configSchema as
-    | { properties?: Record<string, unknown>; required?: string[] }
-    | undefined
-  const props = schema?.properties
-  if (!props || typeof props !== 'object') return []
-  const required = new Set(schema?.required ?? [])
+/** Read the JSON-Schema properties off a descriptor into field specs. No app
+ *  knowledge — purely schema-driven. */
+function fieldsOf(descriptor: AppDescriptor): ConfigFieldSpec[] {
+  const props = schemaProps(descriptor)
+  if (!props) return []
+  const required = new Set(schemaRequired(descriptor))
   return Object.entries(props).map(([key, raw]) => {
     const prop = (raw ?? {}) as { 'x-secret'?: boolean }
-    const isSecret = prop['x-secret'] === true
-    const badge: ConfigField['badge'] = isSecret
+    const secret = prop['x-secret'] === true
+    const badge: ConfigFieldSpec['badge'] = secret
       ? 'SECRET'
       : required.has(key)
         ? 'REQUIRED'
         : 'OPTIONAL'
-    const stored = descriptor.config[key]
-    let value: string
-    if (stored === undefined || stored === null || stored === '') {
-      value = ''
-    } else if (isSecret) {
-      // Mask secrets — show only that one is set, never the value.
-      value = '••••••••'
-    } else {
-      value = String(stored)
-    }
-    return { key, badge, value }
+    const raw0 = descriptor.config[key]
+    const stored =
+      raw0 === undefined || raw0 === null ? '' : String(raw0)
+    return { key, badge, secret, pathLike: /path$/i.test(key), stored }
   })
 }
+
+function schemaProps(
+  descriptor: AppDescriptor,
+): Record<string, unknown> | null {
+  const schema = descriptor.configSchema as
+    | { properties?: Record<string, unknown> }
+    | undefined
+  const props = schema?.properties
+  return props && typeof props === 'object' ? props : null
+}
+
+function schemaRequired(descriptor: AppDescriptor): string[] {
+  const schema = descriptor.configSchema as { required?: string[] } | undefined
+  return schema?.required ?? []
+}
+
+const Eye = ({ off }: { off: boolean }): React.ReactElement =>
+  sw(
+    off ? (
+      <>
+        <path d="M3 3l18 18" strokeLinecap="round" />
+        <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+        <path d="M9.4 5.2A9.5 9.5 0 0 1 12 5c5 0 9 5 9 7a12 12 0 0 1-2 2.5M6.2 6.6C3.9 8 2 10.6 2 12c0 1.4 2.4 4.4 5 5.6" />
+      </>
+    ) : (
+      <>
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+        <circle cx="12" cy="12" r="2.6" />
+      </>
+    ),
+  )
+
+/** One editable config field: text input (masked + reveal for secrets), an
+ *  optional "Choose…" affordance for path-like keys, and a Save button that
+ *  dispatches a whole-replace `set_app_config` (merging the edited key into the
+ *  app's current config so other keys survive). */
+function ConfigFieldRow({
+  appName,
+  config,
+  field,
+}: {
+  appName: string
+  config: Record<string, unknown>
+  field: ConfigFieldSpec
+}): React.ReactElement {
+  const [draft, setDraft] = useState(field.stored)
+  const [reveal, setReveal] = useState(false)
+  // Re-sync the draft if the stored value changes underneath us (e.g. a save
+  // round-trips and apps:state re-emits).
+  React.useEffect(() => setDraft(field.stored), [field.stored])
+
+  const save = (): void => {
+    dispatch({
+      type: 'set_app_config',
+      name: appName,
+      values: { ...config, [field.key]: draft },
+    })
+  }
+
+  return (
+    <div className="field">
+      <div className="field-l">
+        <span className="k">{field.key}</span>
+        <span className="badge">{field.badge}</span>
+      </div>
+      <div className="inp">
+        {field.secret ? (
+          <span className="secinp">
+            <input
+              type={reveal ? 'text' : 'password'}
+              value={draft}
+              placeholder="Not set"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+            />
+            <button
+              className="eye"
+              title={reveal ? 'Hide' : 'Reveal'}
+              onClick={() => setReveal((v) => !v)}
+            >
+              <Eye off={reveal} />
+            </button>
+          </span>
+        ) : (
+          <input
+            value={draft}
+            placeholder="Not set"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+          />
+        )}
+        <button className="savebtn" onClick={save}>
+          {field.pathLike ? 'Choose…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** "Search engine" selector — the web app's two-option UX. The web app's
+ *  schema only declares `tavilyKey`; we surface it as a choice between the
+ *  built-in keyless SERP (no config) and Tavily (reveals the key field).
+ *  Detected by the presence of a `tavilyKey` property in the schema, NOT by
+ *  app name — any app declaring `tavilyKey` gets this affordance. */
+function EngineSelector({
+  descriptor,
+}: {
+  descriptor: AppDescriptor
+}): React.ReactElement {
+  const storedKey = descriptor.config['tavilyKey']
+  const hasKey = typeof storedKey === 'string' && storedKey !== ''
+  // 'tavily' once the user picks Tavily OR a key is already stored.
+  const [engine, setEngine] = useState<'serp' | 'tavily'>(
+    hasKey ? 'tavily' : 'serp',
+  )
+  const [draft, setDraft] = useState(hasKey ? String(storedKey) : '')
+  const [reveal, setReveal] = useState(false)
+  React.useEffect(() => {
+    setEngine(hasKey ? 'tavily' : 'serp')
+    setDraft(hasKey ? String(storedKey) : '')
+  }, [hasKey, storedKey])
+
+  const chooseSerp = (): void => {
+    setEngine('serp')
+    // Built-in SERP = clear the key (whole-replace with an empty object).
+    dispatch({ type: 'set_app_config', name: descriptor.name, values: {} })
+  }
+  const saveTavily = (): void => {
+    dispatch({
+      type: 'set_app_config',
+      name: descriptor.name,
+      values: { tavilyKey: draft },
+    })
+  }
+
+  return (
+    <div className="field">
+      <div className="field-l">
+        <span className="fl">Search engine</span>
+      </div>
+      <div className="engine-opts">
+        <button
+          className={`sel${engine === 'serp' ? ' on' : ''}`}
+          onClick={chooseSerp}
+        >
+          <span>Built-in SERP</span>
+          {engine === 'serp' && <Check />}
+        </button>
+        <button
+          className={`sel${engine === 'tavily' ? ' on' : ''}`}
+          onClick={() => setEngine('tavily')}
+        >
+          <span>Tavily</span>
+          {engine === 'tavily' && <Check />}
+        </button>
+      </div>
+      {engine === 'serp' ? (
+        <div className="field-note">
+          <span className="ok">●</span> DuckDuckGo + Marginalia · no account
+          needed.
+        </div>
+      ) : (
+        <div className="inp" style={{ marginTop: 9 }}>
+          <span className="secinp">
+            <input
+              type={reveal ? 'text' : 'password'}
+              value={draft}
+              placeholder="tavilyKey"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveTavily()}
+            />
+            <button
+              className="eye"
+              title={reveal ? 'Hide' : 'Reveal'}
+              onClick={() => setReveal((v) => !v)}
+            >
+              <Eye off={reveal} />
+            </button>
+          </span>
+          <button className="savebtn" onClick={saveTavily}>
+            Save
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const Check = (): React.ReactElement => (
+  <span className="sc">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path d="M5 12l5 5 9-11" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  </span>
+)
 
 // ── App card ─────────────────────────────────────────────────────
 
@@ -135,7 +327,12 @@ function AppCard({ descriptor }: { descriptor: AppDescriptor }): React.ReactElem
   // (default on). Reactive — `toggle_participation` flips `state.participation`
   // through the reducer, so the switch updates without re-emitting `apps:state`.
   const included = useEngineStore((s) => s.participation[descriptor.name] !== false)
-  const fields = fieldsOf(descriptor)
+  const props = schemaProps(descriptor)
+  // The web "Search engine" UX: any app whose schema declares `tavilyKey` is
+  // rendered as the built-in-SERP / Tavily selector instead of a raw key field.
+  const isEngineSelector = props !== null && 'tavilyKey' in props
+  const fields = isEngineSelector ? [] : fieldsOf(descriptor)
+  const hasConfig = props !== null && Object.keys(props).length > 0
   return (
     <div className={`app${open ? ' open' : ''}`}>
       <div className="app-hd" onClick={() => setOpen((v) => !v)}>
@@ -178,18 +375,19 @@ function AppCard({ descriptor }: { descriptor: AppDescriptor }): React.ReactElem
               })}
             </div>
           )}
-          {fields.length > 0 ? (
+          {isEngineSelector ? (
+            <EngineSelector descriptor={descriptor} />
+          ) : fields.length > 0 ? (
             fields.map((f) => (
-              <div className="field" key={f.key}>
-                <div className="field-l">
-                  <span className="k">{f.key}</span>
-                  <span className="badge">{f.badge}</span>
-                </div>
-                <div className="sel">
-                  <span>{f.value || 'Not set'}</span>
-                </div>
-              </div>
+              <ConfigFieldRow
+                key={f.key}
+                appName={descriptor.name}
+                config={descriptor.config}
+                field={f}
+              />
             ))
+          ) : hasConfig ? (
+            <div className="nocfg">No editable configuration.</div>
           ) : (
             <div className="nocfg">No configuration needed.</div>
           )}

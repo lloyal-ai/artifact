@@ -323,15 +323,36 @@ input { font-family: inherit; }
 .field-l { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
 .field-l .k { font-size: 14.5px; color: var(--ink); font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
 .field-l .fl { font-size: 14px; color: var(--ink); font-weight: 600; }
-/* select-style control (read-only display of the current value this increment) */
+/* select-style control (engine selector; one option per button) */
 .sel { display: flex; align-items: center; width: 100%; font-size: 14px; font-weight: 550; color: var(--ink);
-  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 9px; padding: 10px 12px; }
-.sel .sc { margin-left: auto; color: var(--ink-3); display: flex; }
+  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 9px; padding: 10px 12px; cursor: pointer; }
+.sel:hover { border-color: var(--accent); }
+.sel.on { border-color: var(--accent); color: var(--ink); }
+.sel .sc { margin-left: auto; color: var(--accent); display: flex; }
 .sel .sc svg { width: 16px; height: 16px; }
+.engine-opts { display: flex; flex-direction: column; gap: 8px; }
 .field-l .badge { font-size: 10.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; border: 0;
   background: var(--bg-3); color: var(--ink-3); }
 .field-note { font-size: 13px; color: var(--ink-3); margin-top: 8px; }
+.field-note .ok { color: var(--accent); }
 .nocfg { font-size: 13.5px; color: var(--ink-3); padding: 14px 0 4px; }
+
+/* editable config fields — text input (+ secret reveal eye) + Save/Choose */
+.inp { display: flex; gap: 9px; align-items: stretch; }
+.inp > input, .secinp { flex: 1; min-width: 0; }
+.inp input { width: 100%; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 9px;
+  padding: 10px 12px; color: var(--ink); font-size: 14px; font-family: ui-monospace, Menlo, monospace; }
+.inp input:focus { outline: none; border-color: var(--accent); }
+.inp input::placeholder { color: var(--ink-3); font-family: inherit; }
+.secinp { position: relative; display: block; }
+.secinp input { padding-right: 38px; }
+.secinp .eye { position: absolute; right: 5px; top: 5px; width: 28px; height: 28px; border: 0; background: transparent;
+  color: var(--ink-3); cursor: pointer; display: grid; place-items: center; }
+.secinp .eye:hover { color: var(--ink); }
+.secinp .eye svg { width: 17px; height: 17px; }
+.savebtn { font-size: 13.5px; font-weight: 600; color: var(--ink); background: var(--bg-3); border: 1px solid var(--line-2);
+  border-radius: 9px; padding: 10px 15px; cursor: pointer; white-space: nowrap; }
+.savebtn:hover { border-color: var(--accent); }
 
 /* install affordance — apps come from the signed channel, never hardwired */
 .install { display: flex; align-items: center; gap: 13px; padding: 15px 16px; border: 1px dashed var(--line-2); border-radius: 14px; color: var(--ink-2); cursor: pointer; margin-top: 4px; }

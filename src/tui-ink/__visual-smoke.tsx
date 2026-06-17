@@ -28,8 +28,6 @@ main(function* () {
   const instance = render(bus, (cmd) => commands.send(cmd));
 
   const origin: ConfigOrigin = {
-    tavilyKey: 'file',
-    corpusPath: 'unset',
     reasoningMode: 'default',
     modelPath: 'default',
     reranker: 'default',
@@ -45,7 +43,8 @@ main(function* () {
       type: 'config:loaded',
       config: {
         version: 1,
-        sources: { tavilyKey: 'tvly-saved-from-disk' },
+        sources: {},
+        apps: { web: { tavilyKey: 'tvly-saved-from-disk' } },
         defaults: { reasoningMode: 'deep', verifyCount: 3, maxTurns: 10 },
         model: {},
       },

@@ -15,26 +15,20 @@ import type { WorkflowEvent } from './events';
 import type { Config } from './config';
 import { shortPath } from './path-utils';
 
-/** Seed/refresh `participation` from current config. reasoning.run today
- *  hardcodes two source apps: `web` (always enabled with a keyless
- *  fallback) and `corpus` (enabled iff a path is set). Configuring (or
- *  reconfiguring) an app sets its participation to `true` — config
- *  change is a strong signal of intent. Clearing the corpus path drops
- *  the entry so the chip falls back to the unconfigured visual.
- *
- *  Output is not a source — it's a sink — so it's not seeded here. */
+/** Seed/refresh `participation` from current config. The reducer holds NO
+ *  per-app knowledge: apps default to included via the `!== false`
+ *  convention (any app absent from the map renders as included), so there's
+ *  nothing to seed here on a plain config load. The included-by-default set
+ *  is the registry-enabled apps surfaced via `apps:state`; per-app intent is
+ *  driven explicitly through `participation:toggled` (chip toggle) and
+ *  `set_app_config` (configuring → main.ts sets the bit + re-emits state).
+ *  Returns `prev` unchanged — kept as a function so config events have a
+ *  single, named place to hook future participation policy. */
 function seedParticipation(
   prev: Record<string, boolean>,
-  cfg: Config,
+  _cfg: Config,
 ): Record<string, boolean> {
-  const next = { ...prev };
-  next.web = true;
-  if (cfg.sources.corpusPath) {
-    next.corpus = true;
-  } else {
-    delete next.corpus;
-  }
-  return next;
+  return prev;
 }
 
 const THINK_CLOSE = '</think>';

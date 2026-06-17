@@ -20,8 +20,7 @@ export type Command =
   | { type: 'add_task'; afterIndex: number }
   | { type: 'delete_task'; index: number }
   | { type: 'move_task'; from: number; to: number }
-  | { type: 'set_tavily_key'; key: string }
-  | { type: 'set_corpus_path'; path: string }
+  | { type: 'set_app_config'; name: string; values: Record<string, unknown> }
   | { type: 'set_output_dir'; path: string }
   | { type: 'set_model_path'; path: string }
   | { type: 'set_reranker_path'; path: string }

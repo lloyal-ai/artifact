@@ -300,7 +300,7 @@ export interface AppState {
    *  for this session); missing key = treat as included by default. The
    *  filter is applied at submit time in main.ts; `runQuery`'s
    *  `appFilter` opt carries the included-names array. Reset to `true`
-   *  on reconfigure (`set_corpus_path`/`set_tavily_key`) — a config
+   *  on reconfigure (`set_app_config`) — a config
    *  change is a strong signal of intent to use the app. */
   participation: Record<string, boolean>;
   /** Installed AgentApps surfaced into the renderer — one descriptor per

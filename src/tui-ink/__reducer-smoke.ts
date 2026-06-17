@@ -533,24 +533,24 @@ check('config:loaded seeds config without forcing a uiPhase transition', () => {
       type: 'config:loaded',
       config: {
         version: 1,
-        sources: { tavilyKey: 'tvly-x' },
+        sources: {},
+        apps: { web: { tavilyKey: 'tvly-x' } },
         defaults: { reasoningMode: 'deep', maxTurns: 10 },
         model: {},
       },
       origin: {
-        tavilyKey: 'file',
-        corpusPath: 'unset',
         reasoningMode: 'file',
         modelPath: 'default',
         reranker: 'default',
         nCtx: 'default',
+        outputDir: 'default',
       },
       path: '/tmp/harness.json',
     } as WorkflowEvent,
   ]);
   assert.equal(s.uiPhase, 'boot');
-  assert.equal(s.config?.sources.tavilyKey, 'tvly-x');
-  assert.equal(s.configOrigin?.tavilyKey, 'file');
+  assert.equal(s.config?.apps.web.tavilyKey, 'tvly-x');
+  assert.equal(s.configOrigin?.reasoningMode, 'file');
 });
 
 check('download:plan populates downloads + uiPhase=downloading', () => {
@@ -697,13 +697,12 @@ check('ui:composer with prefill sets composerPrefill', () => {
 check('config:updated produces a toast; skipped fields flagged', () => {
   const cfg = {
     version: 1 as const,
-    sources: { corpusPath: '/tmp/c' },
+    sources: {},
+    apps: { corpus: { corpusPath: '/tmp/c' } },
     defaults: { reasoningMode: 'deep' as const, maxTurns: 10 },
     model: {},
   };
   const origin = {
-    tavilyKey: 'env' as const,
-    corpusPath: 'file' as const,
     reasoningMode: 'file' as const,
     modelPath: 'default' as const,
     reranker: 'default' as const,

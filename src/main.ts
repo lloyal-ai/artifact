@@ -34,7 +34,7 @@ import {
   reconstructBranch,
   type BranchCheckpoint,
 } from "@lloyal-labs/lloyal-agents";
-import type { App, TraceEvent } from "@lloyal-labs/lloyal-agents";
+import type { App, TraceEvent, AppFactory } from "@lloyal-labs/lloyal-agents";
 import {
   c,
   log,
@@ -48,6 +48,7 @@ import type { WorkflowEvent, Command, Config } from "./tui-ink";
 // Runtime imports ONLY from modules that don't transitively pull Ink (ESM),
 // otherwise the top-level await in yoga-wasm-web breaks the CJS loader.
 import { loadConfig, saveConfig } from "./tui-ink/config";
+import type { LoadedConfig } from "./tui-ink/config";
 import { createBus, type EventBus } from "./tui-ink/event-bus";
 import {
   createInMemoryConfigStore,
@@ -59,6 +60,53 @@ import type { AppDescriptor } from "./tui-ink/state";
 import { createReranker } from "@lloyal-labs/rig/node";
 import { createWebApp } from "@lloyal-labs/web-app";
 import { createCorpusApp } from "@lloyal-labs/corpus-app";
+
+// The two first-party app factories this harness boots, paired with their
+// `manifest.name`. These names bind a FACTORY to its config-store key — they
+// are NOT used to route generic `set_app_config` writes (those are name-driven
+// by the command payload). When app acquisition moves to the signed channel
+// (harness.dev install), this static pairing goes away.
+const WEB_APP = "web";
+const CORPUS_APP = "corpus";
+
+/** Resolve the app factory this harness boots for a given `manifest.name`.
+ *  This is the static FACTORY binding (the only two first-party apps this
+ *  build ships) — it does NOT route config writes; the write path is driven
+ *  by the command's `name`. Returns undefined for unknown names. */
+function factoryFor(name: string): AppFactory | undefined {
+  if (name === WEB_APP) return createWebApp;
+  if (name === CORPUS_APP) return createCorpusApp;
+  return undefined;
+}
+
+/** Whether the named app's factory needs stored config to enable. The web app
+ *  runs config-less (keyless search fallback); the corpus app needs a path.
+ *  Used to decide whether a cleared config keeps the app enabled. */
+function appRequiresConfig(name: string): boolean {
+  return name !== WEB_APP;
+}
+
+/** Resolve path-shaped string values in an app-config object at the UI→harness
+ *  boundary — no per-app name knowledge. A value is a path when its key ends in
+ *  "Path" or the string starts with ~ / . (mirrors config.ts's load-time
+ *  resolver so stored + in-memory forms agree). */
+function resolveConfigPaths(
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (
+      typeof value === "string" &&
+      value !== "" &&
+      (/path$/i.test(key) || /^[~/.]/.test(value))
+    ) {
+      out[key] = resolvePath(value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
 import {
   runQuery,
   runResearchPlan,
@@ -199,15 +247,35 @@ if (nCtxFlag !== undefined && !/^\d+$/.test(nCtxFlag)) {
 }
 const nCtxCli = nCtxFlag !== undefined ? parseInt(nCtxFlag, 10) : undefined;
 
+/** Overlay the `--corpus <dir>` flag onto a freshly-loaded config's per-app
+ *  map (mutates + returns it). The flag (when present) seeds the corpus app's
+ *  stored `corpusPath` so a one-off `--corpus <dir>` boots the corpus app
+ *  without writing harness.json — matching the prior `corpusPath` CLI
+ *  override. The `--corpus` flag binds to the corpus app by definition of the
+ *  flag, not by config-store routing. Resolved at the boundary. */
+function applyCorpusFlag(loadedCfg: LoadedConfig): LoadedConfig {
+  if (flags.corpus) {
+    loadedCfg.config.apps = {
+      ...loadedCfg.config.apps,
+      [CORPUS_APP]: {
+        ...loadedCfg.config.apps[CORPUS_APP],
+        corpusPath: resolvePath(flags.corpus),
+      },
+    };
+  }
+  return loadedCfg;
+}
+
 // Merge: CLI flag > env > harness.json > default.
-const loaded = loadConfig(configPath, {
-  modelPath: cliModelPath,
-  reranker: flags.reranker,
-  corpusPath: flags.corpus,
-  reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
-  nCtx: nCtxCli,
-  outputDir: cliOutputDir,
-});
+const loaded = applyCorpusFlag(
+  loadConfig(configPath, {
+    modelPath: cliModelPath,
+    reranker: flags.reranker,
+    reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
+    nCtx: nCtxCli,
+    outputDir: cliOutputDir,
+  }),
+);
 let liveConfig: Config = loaded.config;
 let liveOrigin = loaded.origin;
 const findingsMaxChars = flags["findings-budget"]
@@ -404,6 +472,21 @@ main(function* () {
   let cliModelOverride: string | undefined = cliModelPath;
   let cliRerankerOverride: string | undefined = flags.reranker;
 
+  // Re-load harness.json with the live CLI-override state + the `--corpus`
+  // flag overlay. Used on every restart / config-write reload so the four
+  // loadConfig sites stay in one place (drops the per-app config-shaped fields
+  // that no longer live in CliOverrides).
+  const reloadLiveConfig = (): LoadedConfig =>
+    applyCorpusFlag(
+      loadConfig(configPath, {
+        modelPath: cliModelOverride,
+        reranker: cliRerankerOverride,
+        reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
+        outputDir: cliOutputDir,
+        nCtx: nCtxCli,
+      }),
+    );
+
   // Compute initial download plan synchronously so it can be bootstrapped
   // alongside config:loaded. Reasoning: if we send download:plan via the bus
   // AFTER mount, the first paint shows the empty 'boot' tree and a later
@@ -597,14 +680,7 @@ main(function* () {
     // handler just persisted) and refresh Ink so the new model name shows
     // during the next load phase.
     if (iteration > 0) {
-      const reloaded = loadConfig(configPath, {
-        modelPath: cliModelOverride,
-        reranker: cliRerankerOverride,
-        corpusPath: flags.corpus,
-        reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
-        outputDir: cliOutputDir,
-        nCtx: nCtxCli,
-      });
+      const reloaded = reloadLiveConfig();
       liveConfig = reloaded.config;
       liveOrigin = reloaded.origin;
       // Use config:loaded (no toast) — the save toast already fired in the
@@ -715,14 +791,7 @@ main(function* () {
             rerankNameNow =
               rerankerResolvedNow.entry?.label ?? path.basename(rerankModelPathNow);
           }
-          const reloaded = loadConfig(configPath, {
-            modelPath: cliModelOverride,
-            reranker: cliRerankerOverride,
-            corpusPath: flags.corpus,
-            reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
-            outputDir: cliOutputDir,
-            nCtx: nCtxCli,
-          });
+          const reloaded = reloadLiveConfig();
           liveConfig = reloaded.config;
           liveOrigin = reloaded.origin;
         }
@@ -777,13 +846,11 @@ main(function* () {
       // the spine and resolve per-spawn tool scope.
       yield* RerankerCtx.set(rerankerFinal);
       const configStore = createInMemoryConfigStore();
-      if (liveConfig.sources.tavilyKey) {
-        yield* configStore.set("web", { tavilyKey: liveConfig.sources.tavilyKey });
-      }
-      if (liveConfig.sources.corpusPath) {
-        yield* configStore.set("corpus", {
-          corpusPath: liveConfig.sources.corpusPath,
-        });
+      // Seed the config store generically from the per-app config map — no
+      // app-name knowledge. Each app's factory reads its own entry on enable
+      // and validates against its `configSchema`.
+      for (const [name, cfg] of Object.entries(liveConfig.apps)) {
+        yield* configStore.set(name, cfg);
       }
       const registry = yield* createAppRegistry({ configStore });
 
@@ -795,10 +862,12 @@ main(function* () {
       yield* CoverageCacheCtx.set(yield* createCoverageCache());
 
       // Enable the corpus app first so installed()[0] is corpus when present
-      // (matches the old sources[0] primacy). The factory loads + tokenizes
-      // the corpus during 'loading'; a bad path surfaces a toast and leaves
-      // the app disabled rather than crashing boot.
-      if (liveConfig.sources.corpusPath) {
+      // (matches the old sources[0] primacy). It only enables when the user
+      // has stored config for it (the factory needs a corpusPath). The factory
+      // loads + tokenizes the corpus during 'loading'; a bad path surfaces a
+      // toast and leaves the app disabled rather than crashing boot.
+      const corpusBootCfg = liveConfig.apps[CORPUS_APP];
+      if (corpusBootCfg && Object.keys(corpusBootCfg).length > 0) {
         uiChannel.send({ type: "weights:label", label: "Indexing corpus…" });
         try {
           const corpusApp = yield* registry.enable(createCorpusApp);
@@ -806,7 +875,7 @@ main(function* () {
           const pd = { toc: typeof pdToc === "string" ? pdToc : undefined };
           uiChannel.send({
             type: "corpus:indexed",
-            corpusPath: liveConfig.sources.corpusPath,
+            corpusPath: String(corpusBootCfg.corpusPath ?? ""),
             fileCount: pd?.toc ? pd.toc.split("\n").filter(Boolean).length : 0,
             chunkCount: 0,
           });
@@ -1018,41 +1087,73 @@ main(function* () {
             continue;
           }
 
-          if (cmd.type === "set_tavily_key") {
+          if (cmd.type === "set_app_config") {
+            // Generic per-app config write — no app-name knowledge. Resolve
+            // path-shaped string values at the boundary (~ + absolute), store
+            // the WHOLE replacement in the config store, then disable+re-enable
+            // the app so its factory re-reads config; the registry validates
+            // against the app's `configSchema` on enable, so a bad value surfaces
+            // as a toast and leaves the app disabled rather than crashing.
+            const resolvedValues = resolveConfigPaths(cmd.values);
+            const isClear = Object.keys(resolvedValues).length === 0;
+
+            yield* configStore.set(cmd.name, resolvedValues);
+
+            const factory = factoryFor(cmd.name);
+            if (factory) {
+              if (registry.byName(cmd.name)) yield* registry.disable(cmd.name);
+              // Only re-enable when there's config OR the app runs config-less
+              // (web's keyless fallback). For a cleared config on an app that
+              // requires config, staying disabled is correct.
+              const needsConfig = appRequiresConfig(cmd.name);
+              if (!isClear || !needsConfig) {
+                uiChannel.send({ type: "weights:start", label: "Applying…" });
+                try {
+                  const app = yield* registry.enable(factory);
+                  // Surface an indexed-source summary when the app exposes a TOC
+                  // (capability check, not a name check) so the relevant chip
+                  // can show file counts.
+                  const pd = (
+                    app.source as { promptData?: () => { toc?: string } }
+                  ).promptData?.();
+                  if (pd?.toc !== undefined) {
+                    uiChannel.send({
+                      type: "corpus:indexed",
+                      corpusPath: String(resolvedValues.corpusPath ?? ""),
+                      fileCount: pd.toc
+                        ? pd.toc.split("\n").filter(Boolean).length
+                        : 0,
+                      chunkCount: 0,
+                    });
+                  }
+                  uiChannel.send({ type: "weights:done" });
+                } catch (err) {
+                  uiChannel.send({ type: "weights:done" });
+                  // Validation/enable failed — drop the bad config and toast.
+                  yield* configStore.clear(cmd.name);
+                  yield* events.send({
+                    type: "ui:error",
+                    message: `Cannot configure ${cmd.name}: ${errorMessage(err)}`,
+                  });
+                  continue;
+                }
+              } else {
+                yield* configStore.clear(cmd.name);
+              }
+            }
+
+            // Configuring an app implies including it in the next query.
+            participation[cmd.name] = true;
+
+            // Persist the whole-replace under apps[name] without clobbering
+            // other apps, then reload so liveConfig reflects disk.
             const saved = saveConfig(
-              { sources: { tavilyKey: cmd.key } },
+              { apps: { [cmd.name]: resolvedValues } },
               configPath,
             );
-            const reloaded = loadConfig(configPath, {
-              modelPath: cliModelOverride,
-              reranker: cliRerankerOverride,
-              corpusPath: flags.corpus,
-              reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
-              outputDir: cliOutputDir,
-            });
+            const reloaded = reloadLiveConfig();
             liveConfig = reloaded.config;
             liveOrigin = reloaded.origin;
-            // Swap the web provider in place: the factory reads the key from
-            // the config store at construction (Tavily with a key, keyless
-            // without). Web stays enabled either way.
-            if (registry.byName("web")) yield* registry.disable("web");
-            if (liveConfig.sources.tavilyKey) {
-              yield* configStore.set("web", {
-                tavilyKey: liveConfig.sources.tavilyKey,
-              });
-            } else {
-              yield* configStore.clear("web");
-            }
-            try {
-              yield* registry.enable(createWebApp);
-              // Reconfigure = strong signal of intent; auto-include.
-              participation["web"] = true;
-            } catch (err) {
-              yield* events.send({
-                type: "ui:error",
-                message: `Web search disabled: ${errorMessage(err)}.`,
-              });
-            }
             yield* events.send({
               type: "config:updated",
               config: liveConfig,
@@ -1061,8 +1162,7 @@ main(function* () {
               gitignored: saved.gitignored,
               skipped: saved.skipped,
             });
-            // Web app was re-enabled with the new key + config — refresh the
-            // Settings drawer.
+            // Registry membership/config changed — refresh the Settings drawer.
             yield* emitApps();
           } else if (cmd.type === "set_output_dir") {
             // Resolve at the boundary: ~ expansion + relative→absolute happen
@@ -1073,13 +1173,7 @@ main(function* () {
               { sources: { outputDir: resolved } },
               configPath,
             );
-            const reloaded = loadConfig(configPath, {
-              modelPath: cliModelOverride,
-              reranker: cliRerankerOverride,
-              corpusPath: flags.corpus,
-              reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
-              outputDir: cliOutputDir,
-            });
+            const reloaded = reloadLiveConfig();
             liveConfig = reloaded.config;
             liveOrigin = reloaded.origin;
             yield* events.send({
@@ -1090,72 +1184,6 @@ main(function* () {
               gitignored: saved.gitignored,
               skipped: saved.skipped,
             });
-          } else if (cmd.type === "set_corpus_path") {
-            const resolved = cmd.path ? resolvePath(cmd.path) : "";
-            // Re-enable the corpus app against the new path. Validate BEFORE
-            // persisting: a bad path that lands in harness.json would disable
-            // corpus on every subsequent boot. Empty path clears + disables.
-            if (registry.byName("corpus")) yield* registry.disable("corpus");
-            if (resolved) {
-              uiChannel.send({
-                type: "weights:start",
-                label: "Indexing corpus…",
-              });
-              yield* configStore.set("corpus", { corpusPath: resolved });
-              try {
-                const corpusApp = yield* registry.enable(createCorpusApp);
-                // Reconfigure = strong signal of intent; auto-include.
-                participation["corpus"] = true;
-                const pd = (
-                  corpusApp.source as { promptData?: () => { toc?: string } }
-                ).promptData?.();
-                uiChannel.send({
-                  type: "corpus:indexed",
-                  corpusPath: resolved,
-                  fileCount: pd?.toc
-                    ? pd.toc.split("\n").filter(Boolean).length
-                    : 0,
-                  chunkCount: 0,
-                });
-                uiChannel.send({ type: "weights:done" });
-              } catch (err) {
-                uiChannel.send({ type: "weights:done" });
-                yield* configStore.clear("corpus");
-                yield* events.send({
-                  type: "ui:error",
-                  message: `Cannot use ${resolved}: ${errorMessage(err)}`,
-                });
-                continue;
-              }
-            } else {
-              yield* configStore.clear("corpus");
-            }
-            // Path validated (or cleared) — persist + reload.
-            const saved = saveConfig(
-              { sources: { corpusPath: resolved } },
-              configPath,
-            );
-            const reloaded = loadConfig(configPath, {
-              modelPath: cliModelOverride,
-              reranker: cliRerankerOverride,
-              corpusPath: flags.corpus,
-              reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
-              outputDir: cliOutputDir,
-            });
-            liveConfig = reloaded.config;
-            liveOrigin = reloaded.origin;
-            yield* events.send({
-              type: "config:updated",
-              config: liveConfig,
-              origin: liveOrigin,
-              savedTo: saved.path,
-              gitignored: saved.gitignored,
-              skipped: saved.skipped,
-            });
-            // Corpus app was enabled/disabled + reconfigured — refresh the
-            // Settings drawer.
-            yield* emitApps();
-            if (resolved) yield* events.send({ type: "ui:composer" });
           } else if (cmd.type === "submit_query") {
             if (registry.enabled().length === 0) {
               yield* events.send({
