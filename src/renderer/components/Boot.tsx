@@ -106,13 +106,13 @@ export function Boot({ state }: { state: AppState }): React.ReactElement {
       <div className="bootcard">
         <img className="logo" src={logoUrl} alt="Artifact" />
         <h1>Artifact</h1>
-        <div className="sub">
-          {err
-            ? 'Boot failed — recover below'
-            : downloads.length > 0
-              ? 'Fetching local models — one time only'
-              : 'Starting the local engine…'}
-        </div>
+        {/* Only show a sub-line when there's something specific to say. The plain
+            "loading" case is carried by the spinner below — no dated copy. */}
+        {(err || downloads.length > 0) && (
+          <div className="sub">
+            {err ? 'Boot failed — recover below' : 'Fetching local models — one time only'}
+          </div>
+        )}
 
         {!err && downloads.length > 0 && (
           <div>

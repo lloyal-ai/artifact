@@ -3,6 +3,7 @@ import type { AppState } from '../../tui-ink/state'
 import { useUiNav } from '../ui-store'
 import { IconList, IconSettings } from '../icons'
 import { Gauge } from './Gauge'
+import { EntChip, ENT_ORDER, activeEntitlements, type EntKey } from '../entitlements'
 import logoUrl from '../assets/logo.png'
 
 /** Activity-waveform glyph for the live trace pane. */
@@ -12,59 +13,59 @@ const IconTrace = (): React.ReactElement => (
   </svg>
 )
 
-/** Upward arrow — "data leaving the device" cue on the live egress chip. */
-const IconEgress = (): React.ReactElement => (
-  <svg className="egr-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 19V6M6 12l6-6 6 6" />
-  </svg>
-)
-
-/**
- * Live network-egress signal: true while any in-flight agent tool call belongs
- * to an app holding a `network` / `data-egress` entitlement. Entitlement-driven
- * (not tool-name-coded), so it generalizes to any networked AgentApp. An
- * "in-flight" call = a `tool_call` timeline item with no matching `tool_result`
- * yet (by callId), on a non-done agent. This is the "permissions visible while
- * active" promise made literal — the indicator lights ONLY while data is
- * actually leaving the device.
- */
-function networkActive(state: AppState): boolean {
-  const netTools = new Set<string>()
-  for (const app of state.apps) {
-    if (app.entitlements.some((e) => e === 'network' || e === 'data-egress')) {
-      for (const t of app.tools) netTools.add(t)
-    }
-  }
-  if (netTools.size === 0) return false
-  for (const a of state.agents.values()) {
-    if (a.phase === 'done') continue
-    const resolved = new Set<number>()
-    for (const it of a.timeline) if (it.kind === 'tool_result' && it.callId != null) resolved.add(it.callId)
-    for (const it of a.timeline) {
-      if (it.kind === 'tool_call' && !resolved.has(it.id) && netTools.has(it.tool)) return true
-    }
-  }
-  return false
-}
-
-/** Latch `active` on, then hold for `holdMs` after it clears — so a sub-second
- *  network call still registers and a burst of calls doesn't strobe the chip. */
-function useSticky(active: boolean, holdMs: number): boolean {
-  const [on, setOn] = React.useState(active)
+/** Latch each active entitlement key on, then hold it for `holdMs` after it
+ *  clears — so a sub-second tool call still registers and a burst doesn't
+ *  strobe the chips. Per-key: chips appear/leave independently. */
+function useStickyKeys(active: Set<EntKey>, holdMs: number): ReadonlySet<EntKey> {
+  const [shown, setShown] = React.useState<ReadonlySet<EntKey>>(active)
+  const timers = React.useRef(new Map<EntKey, ReturnType<typeof setTimeout>>())
+  const key = [...active].sort().join('|')
   React.useEffect(() => {
-    if (active) {
-      setOn(true)
-      return
+    setShown((prev) => {
+      const next = new Set(prev)
+      for (const k of active) {
+        next.add(k)
+        const t = timers.current.get(k)
+        if (t) {
+          clearTimeout(t)
+          timers.current.delete(k)
+        }
+      }
+      for (const k of prev) {
+        if (!active.has(k) && !timers.current.has(k)) {
+          timers.current.set(
+            k,
+            setTimeout(() => {
+              timers.current.delete(k)
+              setShown((p) => {
+                const n = new Set(p)
+                n.delete(k)
+                return n
+              })
+            }, holdMs),
+          )
+        }
+      }
+      return next
+    })
+    // `active` is rebuilt each render; gate on its serialized contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, holdMs])
+  React.useEffect(() => {
+    const t = timers.current
+    return () => {
+      for (const id of t.values()) clearTimeout(id)
     }
-    const t = setTimeout(() => setOn(false), holdMs)
-    return () => clearTimeout(t)
-  }, [active, holdMs])
-  return on
+  }, [])
+  return shown
 }
 
 export function Header({ state }: { state: AppState }): React.ReactElement {
   const openDrawer = useUiNav((s) => s.openDrawer)
-  const egress = useSticky(networkActive(state), 1200)
+  // Live permission chips: one per entitlement currently in use (an in-flight
+  // tool call belonging to an app that declared it). "Permissions visible while
+  // active" made literal — the chips light ONLY while the capability is in use.
+  const liveEnts = useStickyKeys(activeEntitlements(state), 1200)
   // Two-tier header:
   //  · `.titlebar` is the custom dark drag strip carrying only the centered
   //    app name. It reserves space for the native window controls — macOS
@@ -95,12 +96,9 @@ export function Header({ state }: { state: AppState }): React.ReactElement {
             <span className="orb" />
             <b>Local</b>
           </span>
-          {egress && (
-            <span className="egress" title="A networked AgentApp is reaching the internet right now — data is leaving your device">
-              <IconEgress />
-              <b>Network</b>
-            </span>
-          )}
+          {ENT_ORDER.filter((k) => liveEnts.has(k)).map((k) => (
+            <EntChip key={k} kind={k} />
+          ))}
         </div>
         <Gauge pct={state.pressure?.pct ?? 0} />
         <button

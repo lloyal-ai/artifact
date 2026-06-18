@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type { Toast as ToastModel } from '../tui-ink/state'
 import { useEngineState } from './bridge'
 import { useUiNav } from './ui-store'
+import { EntChip } from './entitlements'
 import { Boot } from './components/Boot'
 import { Composer } from './components/Composer'
 import { Drawer } from './components/Drawer'
@@ -129,22 +130,6 @@ function Toast({ toast }: { toast: ToastModel | null }): React.ReactElement | nu
   )
 }
 
-/** Up-arrow — "data leaving the device" cue; mirrors Header's IconEgress so the
- *  legend's Network pill matches the live one in the toolbar exactly. */
-const IconEgress = (): React.ReactElement => (
-  <svg
-    className="egr-ic"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2.2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M12 19V6M6 12l6-6 6 6" />
-  </svg>
-)
-
 function Welcome(): React.ReactElement {
   return (
     <div className="scroll">
@@ -154,10 +139,10 @@ function Welcome(): React.ReactElement {
           A private AI workspace for research, reasoning, and source-backed work.
         </div>
 
-        {/* Transparency card — styled like the agent/spine cards. Lists every
-            entitlement an app can hold. Live ones (Local, Network) describe the
-            top-bar pill the user will see; the rest are declared per-app and
-            surfaced in Settings, not the live bar. Pills are non-interactive. */}
+        {/* Transparency card — styled like the agent/spine cards. A legend for the
+            live status bar: each chip below is the SAME chip that lights at the
+            top while that capability is in use (an in-flight tool call from an app
+            that declared it). Reuses `EntChip` so legend ⇄ bar match exactly. */}
         <div className="card welcome-card">
           <div className="wlegend">
             <div className="wlegend-cap">How Artifact’s AI transparency works:</div>
@@ -169,41 +154,38 @@ function Welcome(): React.ReactElement {
               </span>
             </div>
             <div className="wl-desc">
-              Inference runs on your device by default — the baseline everything below is measured
+              The model runs on your device. Always on — the baseline everything below is measured
               against.
             </div>
 
             <div className="wl-pill">
-              <span className="egress">
-                <IconEgress />
-                <b>Network</b>
-              </span>
+              <EntChip kind="network" />
             </div>
             <div className="wl-desc">
-              Lights up in the top status bar while a reviewed app reaches the internet — so you see
-              the moment data leaves your device.
+              Lights while an app reaches the internet but declares it sends none of your data out.
             </div>
 
             <div className="wl-pill">
-              <span className="entpill">
-                <span className="dot files" />
-                <b>Local files</b>
-              </span>
+              <EntChip kind="local-files" />
             </div>
             <div className="wl-desc">
-              Lets an app read files on your device. Doesn’t live in the top status bar — check which
-              app uses it in Settings.
+              Lights while an app reads files on your device — e.g. document search. Nothing leaves
+              the device.
             </div>
 
             <div className="wl-pill">
-              <span className="entpill">
-                <span className="dot creds" />
-                <b>Credentials</b>
-              </span>
+              <EntChip kind="credentials" />
             </div>
             <div className="wl-desc">
-              Lets an app use API keys you’ve stored. Doesn’t live in the top status bar — check which
-              app uses it in Settings.
+              Lights while an app uses an account you’ve connected (a stored API key or login).
+            </div>
+
+            <div className="wl-pill">
+              <EntChip kind="data-egress" />
+            </div>
+            <div className="wl-desc">
+              The strongest case: an app reaches the internet on your behalf, so your data could be
+              leaving the device. Shown in place of <b>Network</b> when an app declares data transfer.
             </div>
           </div>
         </div>
