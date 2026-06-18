@@ -232,6 +232,28 @@ input { font-family: inherit; }
 .prow .n { width: 22px; height: 22px; border-radius: 7px; background: var(--bg-3); color: var(--ink-3); font-size: 12px; font-weight: 700; display: grid; place-items: center; flex: none; margin-top: 1px; }
 .prow .src { margin-left: auto; font-size: 10.5px; color: var(--ink-4); display: flex; align-items: center; gap: 5px; flex: none; margin-top: 4px; }
 .prow .src .d { width: 6px; height: 6px; border-radius: 50%; }
+/* ── Interactive plan-review rows (uiPhase === plan_review) ── */
+.prow.editing { align-items: center; gap: 8px; padding: 6px 8px; }
+.prow.editing:hover { background: transparent; }
+.prow.editing:hover .prow-acts, .prow.editing:focus-within .prow-acts { opacity: 1; }
+.prow.editing .src { margin-left: 0; margin-top: 0; }
+.ptdesc { flex: 1; min-width: 0; resize: none; field-sizing: content;
+  background: var(--bg-2); border: 1px solid transparent; border-radius: 8px;
+  color: var(--ink); font: inherit; font-size: 16px; line-height: 1.5; padding: 8px 11px; outline: none; }
+.ptdesc::placeholder { color: var(--ink-4); }
+.ptdesc:hover { border-color: var(--line); }
+.ptdesc:focus { border-color: var(--violet); background: var(--bg-1); }
+.prow-acts { display: flex; gap: 3px; flex: none; opacity: 0; transition: opacity 0.12s; }
+.ra { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center;
+  color: var(--ink-3); font-size: 13px; border: 1px solid transparent; transition: 0.12s; }
+.ra:hover:not(:disabled) { background: var(--bg-3); color: var(--ink); border-color: var(--line); }
+.ra:disabled { opacity: 0.28; cursor: default; }
+.ra.del:hover:not(:disabled) { color: var(--hot); border-color: color-mix(in srgb, var(--hot) 40%, transparent); }
+.addtask { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; margin: 2px 0 0;
+  border-radius: 10px; border: 1px dashed var(--line-2); color: var(--ink-3); font-size: 13.5px; font-weight: 600; transition: 0.13s; }
+.addtask:hover { color: var(--ink); border-color: var(--violet); background: var(--bg-2); }
+.addtask .plus { font-size: 17px; line-height: 1; margin-top: -1px; }
+
 .pfoot { display: flex; gap: 10px; padding: 12px 12px 5px; border-top: 1px solid var(--line); margin-top: 5px; }
 .btn { font-size: 13.5px; font-weight: 600; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); }
 .btn:hover { border-color: var(--line-2); }

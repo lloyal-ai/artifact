@@ -1,4 +1,5 @@
 import React from 'react'
+import type { ResearchTask } from '@lloyal-labs/rig'
 import type { AgentRuntime, AppState } from '../../tui-ink/state'
 import { dispatch } from '../bridge'
 import { IconChevron } from '../icons'
@@ -60,6 +61,91 @@ export function ScoutedCard({ state }: { state: AppState }): React.ReactElement 
   )
 }
 
+/**
+ * One editable plan-task row (only at plan_review). The description is a local
+ * draft committed on blur/Enter via `update_task_description` (the edit
+ * round-trips engine → reducer → state.plan, so binding the input straight to
+ * state would lag a token-stream behind); reorder/delete dispatch immediately.
+ * Per-task source routing (`task.app`) is read-only — there is no command to
+ * change it, and inventing one would mean a contract change, not a renderer one.
+ */
+function PlanTaskRow({
+  task,
+  index,
+  count,
+}: {
+  task: ResearchTask
+  index: number
+  count: number
+}): React.ReactElement {
+  const [draft, setDraft] = React.useState(task.description)
+  // Re-sync if the stored description changes underneath us (reorder, round-trip).
+  React.useEffect(() => setDraft(task.description), [task.description])
+
+  const commit = (): void => {
+    const next = draft.trim()
+    if (!next) {
+      setDraft(task.description) // empty isn't a valid task — revert
+      return
+    }
+    if (next !== task.description) {
+      dispatch({ type: 'update_task_description', index, description: next })
+    }
+  }
+
+  return (
+    <div className="prow editing">
+      <span className="n">{index + 1}</span>
+      <textarea
+        className="ptdesc"
+        value={draft}
+        rows={1}
+        placeholder="Describe this task…"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            ;(e.target as HTMLTextAreaElement).blur()
+          }
+        }}
+      />
+      {task.app && (
+        <span className="src">
+          <span className="d" style={{ background: agentColor(index) }} />
+          {task.app}
+        </span>
+      )}
+      <span className="prow-acts">
+        <button
+          className="ra"
+          title="Move up"
+          disabled={index === 0}
+          onClick={() => dispatch({ type: 'move_task', from: index, to: index - 1 })}
+        >
+          ↑
+        </button>
+        <button
+          className="ra"
+          title="Move down"
+          disabled={index === count - 1}
+          onClick={() => dispatch({ type: 'move_task', from: index, to: index + 1 })}
+        >
+          ↓
+        </button>
+        <button
+          className="ra del"
+          title="Delete task"
+          disabled={count <= 1}
+          onClick={() => dispatch({ type: 'delete_task', index })}
+        >
+          ✕
+        </button>
+      </span>
+    </div>
+  )
+}
+
 /** The Planned beat — interactive plan-review when uiPhase === plan_review. */
 export function PlanCard({ state }: { state: AppState }): React.ReactElement {
   const plan = state.plan
@@ -81,31 +167,43 @@ export function PlanCard({ state }: { state: AppState }): React.ReactElement {
         <IconChevron className="chev" />
       </div>
       <div className="plist">
-        {plan.tasks.map((t, i) => (
-          <div className="prow" key={i}>
-            <span className="n">{i + 1}</span>
-            <span style={{ flex: 1, minWidth: 0 }}>{t.description}</span>
-            <span className="src">
-              <span className="d" style={{ background: agentColor(i) }} />
-              {t.app ?? ''}
-            </span>
-          </div>
-        ))}
+        {plan.tasks.map((t, i) =>
+          interactive ? (
+            <PlanTaskRow key={i} task={t} index={i} count={plan.tasks.length} />
+          ) : (
+            <div className="prow" key={i}>
+              <span className="n">{i + 1}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{t.description}</span>
+              <span className="src">
+                <span className="d" style={{ background: agentColor(i) }} />
+                {t.app ?? ''}
+              </span>
+            </div>
+          ),
+        )}
         {interactive && (
-          <div className="pfoot">
-            <button className="btn primary" onClick={() => dispatch({ type: 'accept_plan' })}>
-              Start research
-            </button>
-            <button className="btn" onClick={() => dispatch({ type: 'edit_plan', query: state.query })}>
-              Edit plan
-            </button>
+          <>
             <button
-              className="btn"
-              onClick={() => dispatch({ type: 'change_mode', mode: mode === 'deep' ? 'flat' : 'deep' })}
+              className="addtask"
+              onClick={() => dispatch({ type: 'add_task', afterIndex: plan.tasks.length - 1 })}
             >
-              {mode === 'deep' ? 'Switch to Parallel' : 'Switch to Deep'}
+              <span className="plus">+</span> Add a task
             </button>
-          </div>
+            <div className="pfoot">
+              <button className="btn primary" onClick={() => dispatch({ type: 'accept_plan' })}>
+                Start research
+              </button>
+              <button className="btn" onClick={() => dispatch({ type: 'edit_plan', query: state.query })}>
+                Re-plan
+              </button>
+              <button
+                className="btn"
+                onClick={() => dispatch({ type: 'change_mode', mode: mode === 'deep' ? 'flat' : 'deep' })}
+              >
+                {mode === 'deep' ? 'Switch to Parallel' : 'Switch to Deep'}
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>
