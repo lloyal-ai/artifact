@@ -500,6 +500,17 @@ export function Settings({ onClose }: { onClose: () => void }): React.ReactEleme
             </div>
           </div>
 
+          <div
+            style={{
+              fontSize: 12.5,
+              color: 'var(--ink-4)',
+              lineHeight: 1.5,
+              padding: '14px 2px 2px',
+            }}
+          >
+            App changes take effect on your next run — not one already in progress.
+          </div>
+
           <Advanced />
         </div>
       </div>
