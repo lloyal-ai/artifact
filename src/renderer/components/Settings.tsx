@@ -349,7 +349,12 @@ function AppCard({ descriptor }: { descriptor: AppDescriptor }): React.ReactElem
   // Per-query participation (matches the TUI source chips): `!== false` = included
   // (default on). Reactive — `toggle_participation` flips `state.participation`
   // through the reducer, so the switch updates without re-emitting `apps:state`.
-  const included = useEngineStore((s) => s.participation[descriptor.name] !== false)
+  const participating = useEngineStore((s) => s.participation[descriptor.name] !== false)
+  // The toggle is ON only when the app is registry-enabled AND included. A
+  // disabled app (e.g. corpus with no corpusPath) reads OFF regardless of
+  // participation — the way to turn it on is to configure it (saving config
+  // calls set_app_config, which enables the app engine-side).
+  const included = descriptor.enabled && participating
   const props = schemaProps(descriptor)
   // The web "Search engine" UX: any app whose schema declares `tavilyKey` is
   // rendered as the built-in-SERP / Tavily selector instead of a raw key field.
@@ -361,15 +366,23 @@ function AppCard({ descriptor }: { descriptor: AppDescriptor }): React.ReactElem
       <div className="app-hd" onClick={() => setOpen((v) => !v)}>
         <AppIcon iconUrl={descriptor.iconUrl} />
         <span className="app-meta">
-          <div className="app-name">{descriptor.title}</div>
+          <div className="app-name">
+            {descriptor.title}
+            {!descriptor.enabled && <span className="needs-setup">Needs setup</span>}
+          </div>
           <div className="app-desc">{descriptor.description}</div>
         </span>
         <span
-          className={`sw${included ? ' on' : ''}`}
+          className={`sw${included ? ' on' : ''}${descriptor.enabled ? '' : ' off'}`}
           onClick={(e) => {
-            // Toggle participation without collapsing/expanding the card.
+            // Toggle participation without collapsing/expanding the card. Only
+            // an enabled app's switch is interactive — a disabled app is turned
+            // on by configuring it (expand the card + save config), so its
+            // switch is inert here.
             e.stopPropagation()
-            dispatch({ type: 'toggle_participation', name: descriptor.name })
+            if (descriptor.enabled) {
+              dispatch({ type: 'toggle_participation', name: descriptor.name })
+            }
           }}
         />
         <Chevron />

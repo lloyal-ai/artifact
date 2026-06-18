@@ -14,6 +14,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createRequire } from "node:module";
 import { parseArgs } from "node:util";
 import {
   main,
@@ -34,7 +35,12 @@ import {
   reconstructBranch,
   type BranchCheckpoint,
 } from "@lloyal-labs/lloyal-agents";
-import type { App, TraceEvent, AppFactory } from "@lloyal-labs/lloyal-agents";
+import type {
+  App,
+  TraceEvent,
+  AppFactory,
+  AppManifest,
+} from "@lloyal-labs/lloyal-agents";
 import {
   c,
   log,
@@ -69,14 +75,30 @@ import { createCorpusApp } from "@lloyal-labs/corpus-app";
 const WEB_APP = "web";
 const CORPUS_APP = "corpus";
 
+/** The KNOWN app set this harness bundles: each first-party app paired with
+ *  its `manifest.name`, its zero-arg factory, and its npm package name. This is
+ *  the canonical enumeration the Settings drawer renders against — every entry
+ *  appears as a card whether or not it's currently registry-enabled, so a
+ *  bundled-but-disabled app (e.g. corpus, which can't enable without a
+ *  `corpusPath`) is still configurable. `pkg` is used to read the app's
+ *  `app.json` manifest WITHOUT enabling the factory (corpus's factory throws
+ *  without config). When app acquisition moves to the signed channel
+ *  (harness.dev install), this static table is replaced by the installed set. */
+const KNOWN_APPS: readonly {
+  name: string;
+  factory: AppFactory;
+  pkg: string;
+}[] = [
+  { name: WEB_APP, factory: createWebApp, pkg: "@lloyal-labs/web-app" },
+  { name: CORPUS_APP, factory: createCorpusApp, pkg: "@lloyal-labs/corpus-app" },
+];
+
 /** Resolve the app factory this harness boots for a given `manifest.name`.
  *  This is the static FACTORY binding (the only two first-party apps this
  *  build ships) — it does NOT route config writes; the write path is driven
  *  by the command's `name`. Returns undefined for unknown names. */
 function factoryFor(name: string): AppFactory | undefined {
-  if (name === WEB_APP) return createWebApp;
-  if (name === CORPUS_APP) return createCorpusApp;
-  return undefined;
+  return KNOWN_APPS.find((a) => a.name === name)?.factory;
 }
 
 /** Whether the named app's factory needs stored config to enable. The web app
@@ -331,16 +353,56 @@ function buildPlannerContext(apps: readonly App[]): string {
   return lines.join("\n");
 }
 
-// ── Installed-AgentApps surfacing (Settings drawer) ──────────────
+// ── Known-AgentApps surfacing (Settings drawer) ──────────────────
 //
-// The Settings drawer renders one card per registry-enabled app, joining
-// the app's local manifest with its SIGNED catalog metadata
-// (title/iconUrl/entitlements from apps.lloyal.ai). The catalog is fetched
-// once, best-effort, and cached for the process lifetime — display-only, so
-// any failure falls back to manifest-only fields (title = protocol.name, no
-// iconUrl, entitlements = []). buildAppDescriptors() runs after boot and
-// after every registry enable/disable/config change; the result is forwarded
-// to the renderer via the `apps:state` StepEvent.
+// The Settings drawer renders one card per KNOWN bundled app (the KNOWN_APPS
+// table), NOT just the registry-enabled ones — so a bundled-but-disabled app
+// (corpus without a corpusPath) still shows up and can be configured (which
+// enables it). Each card joins the app's local manifest with its SIGNED
+// catalog metadata (title/iconUrl/entitlements from apps.lloyal.ai). The
+// catalog is fetched once, best-effort, and cached for the process lifetime —
+// display-only, so any failure falls back to manifest-only fields (title =
+// protocol.name, no iconUrl, entitlements = []). buildAppDescriptors() runs
+// after boot and after every registry enable/disable/config change; the result
+// is forwarded to the renderer via the `apps:state` StepEvent.
+//
+// Manifest source: for an ENABLED app we read `registry.byName(name).manifest`
+// directly. For a DISABLED app we can't construct the factory (corpus throws
+// without config), so we read the package's `app.json` from disk — the same
+// file the factory itself loads via `join(__dirname,'..','app.json')`. The
+// read uses `createRequire(import.meta.url)` so it resolves the real package
+// location in the esbuild ESM bundle, and is cached per package.
+
+const nodeRequire = createRequire(import.meta.url);
+
+// Per-package app.json cache: undefined = not yet attempted; null = attempted
+// and failed (so we don't re-stat/re-parse on every emit). On a hit we hold the
+// parsed manifest. Keyed by npm package name.
+const manifestCache = new Map<string, AppManifest | null>();
+
+/** Read a KNOWN app's `app.json` manifest from disk WITHOUT enabling it.
+ *  Resolves the package's main entry via `require.resolve(pkg)` — the `.`
+ *  export is the ONLY exported subpath, so `require.resolve(pkg + '/package.json')`
+ *  is blocked by the package's `exports` map and CANNOT be used here. The entry
+ *  resolves to `<pkgRoot>/dist/index.js`; `app.json` sits one level up at the
+ *  package root (exactly where the factory reads it via
+ *  `join(__dirname,'..','app.json')`). Best-effort + cached: any failure caches
+ *  null and returns undefined so the caller falls back to a minimal descriptor. */
+function loadKnownManifest(pkg: string): AppManifest | undefined {
+  if (manifestCache.has(pkg)) return manifestCache.get(pkg) ?? undefined;
+  try {
+    const entry = nodeRequire.resolve(pkg);
+    const appJsonPath = path.join(path.dirname(entry), "..", "app.json");
+    const manifest = JSON.parse(
+      fs.readFileSync(appJsonPath, "utf8"),
+    ) as AppManifest;
+    manifestCache.set(pkg, manifest);
+    return manifest;
+  } catch {
+    manifestCache.set(pkg, null);
+    return undefined;
+  }
+}
 
 /** Shape of the public signed catalog at apps.lloyal.ai. Catalog names are
  *  SCOPED (`lloyal/web`); manifest names are short (`web`). We match by the
@@ -385,9 +447,13 @@ function shortCatalogName(name: string): string {
   return i === -1 ? name : name.slice(i + 1);
 }
 
-/** Build view-ready descriptors for every registry-enabled app, joining the
- *  manifest with signed catalog metadata. Returns an empty array if no apps
- *  are enabled. Display-only — never throws on a catalog miss. */
+/** Build view-ready descriptors for every KNOWN bundled app (NOT just the
+ *  registry-enabled ones), joining each app's manifest with signed catalog
+ *  metadata. A disabled app still gets a card so the user can configure it.
+ *  `enabled` is derived from registry membership. The manifest comes from the
+ *  live registry entry when enabled, else from the package's `app.json` on
+ *  disk (no factory construction — corpus's factory throws without config).
+ *  Display-only — never throws on a catalog or manifest miss. */
 function* buildAppDescriptors(
   registry: AppRegistry,
   configStore: AppConfigStore,
@@ -399,22 +465,42 @@ function* buildAppDescriptors(
   }
 
   const descriptors: AppDescriptor[] = [];
-  for (const app of registry.enabled()) {
-    const { manifest } = app;
-    const meta = byShortName.get(manifest.name);
-    const config = (yield* configStore.get(manifest.name)) ?? {};
+  for (const known of KNOWN_APPS) {
+    const enabledApp = registry.byName(known.name);
+    const enabled = enabledApp !== undefined;
+    // Prefer the live manifest when enabled; otherwise read app.json off disk.
+    const manifest = enabledApp?.manifest ?? loadKnownManifest(known.pkg);
+    const meta = byShortName.get(known.name);
+    const config = (yield* configStore.get(known.name)) ?? {};
+
+    if (!manifest) {
+      // Manifest unreadable (resolve/read/parse failed) — still surface a
+      // minimal card so the app isn't invisible. No tools/schema/entitlements.
+      descriptors.push({
+        name: known.name,
+        title: meta?.title ?? known.name,
+        description: "",
+        iconUrl: meta?.iconUrl,
+        tools: [],
+        entitlements: meta?.entitlements ?? [],
+        configSchema: undefined,
+        config,
+        enabled,
+      });
+      continue;
+    }
+
     descriptors.push({
-      name: manifest.name,
+      name: known.name,
       title:
         meta?.title ?? manifest.hints?.shortName ?? manifest.protocol.name,
-      description:
-        manifest.hints?.description ?? manifest.protocol.useWhen,
+      description: manifest.hints?.description ?? manifest.protocol.useWhen,
       iconUrl: meta?.iconUrl,
       tools: [...manifest.protocol.tools],
       entitlements: meta?.entitlements ?? [],
       configSchema: manifest.configSchema,
       config,
-      enabled: true,
+      enabled,
     });
   }
   return descriptors;
