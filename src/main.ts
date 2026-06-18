@@ -1193,7 +1193,13 @@ main(function* () {
               // requires config, staying disabled is correct.
               const needsConfig = appRequiresConfig(cmd.name);
               if (!isClear || !needsConfig) {
-                uiChannel.send({ type: "weights:start", label: "Applying…" });
+                // A mid-session config-apply is NOT a boot — it must not drive
+                // the full-screen `weights:*` loader (which flips uiPhase to
+                // 'loading', blanking the timeline/drawer, with no `ui:composer`
+                // to follow it back out — leaving the UI stuck on the boot
+                // screen). Feedback comes from the `config:updated` success
+                // toast + the `corpus:indexed` chip below; failures toast via
+                // `ui:error`. The registry.enable() indexing runs inline.
                 try {
                   const app = yield* registry.enable(factory);
                   // Surface an indexed-source summary when the app exposes a TOC
@@ -1212,9 +1218,7 @@ main(function* () {
                       chunkCount: 0,
                     });
                   }
-                  uiChannel.send({ type: "weights:done" });
                 } catch (err) {
-                  uiChannel.send({ type: "weights:done" });
                   // Validation/enable failed — drop the bad config and toast.
                   yield* configStore.clear(cmd.name);
                   yield* events.send({

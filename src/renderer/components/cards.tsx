@@ -73,6 +73,25 @@ function taskStatus(
   return { status: dispatching ? 'paused' : 'running', agent }
 }
 
+/** Re-render every second while `active`, so a live elapsed timer ticks even
+ *  when the agent is paused in a tool barrier (no token stream to drive it). */
+function useNow(active: boolean): number {
+  const [now, setNow] = React.useState(() => Date.now())
+  React.useEffect(() => {
+    if (!active) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [active])
+  return now
+}
+
+/** Compact elapsed: "8s", "45s", "2m 10s". */
+function fmtElapsed(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
 const STATUS_TITLE: Record<TaskStatus, string> = {
   pending: 'Queued',
   running: 'Running',
@@ -118,21 +137,32 @@ function PlanStatusRow({
   const { status, agent } = taskStatus(state, index, dispatching)
   const focusAgent = useUiNav((s) => s.focusAgent)
   const clickable = agent !== null
+  // Per-task elapsed: ticks live while running/paused, freezes at endedAt once done.
+  const running = status === 'running' || status === 'paused'
+  const now = useNow(running)
+  const elapsed = agent ? (agent.endedAt ?? now) - agent.startedAt : null
   return (
     <div
-      className={`prow ${clickable ? 'nav' : ''}`}
+      className={`prow status ${clickable ? 'nav' : ''}`}
       onClick={clickable ? () => focusAgent(agent!.id) : undefined}
       title={clickable ? 'Jump to this agent' : undefined}
     >
       <span className="n">{index + 1}</span>
-      <span style={{ flex: 1, minWidth: 0 }}>{task.description}</span>
-      <TaskStatusGlyph status={status} color={agentColor(index)} />
-      {task.app && (
-        <span className="src">
-          <span className="d" style={{ background: agentColor(index) }} />
-          {task.app}
+      <div className="ptcontent">
+        <span className="ptline">{task.description}</span>
+        <span className="prow-meta">
+          {task.app && (
+            <span className="src">
+              <span className="d" style={{ background: agentColor(index) }} />
+              {task.app}
+            </span>
+          )}
+          <span className="prow-meta-r">
+            {elapsed != null && <span className="task-elapsed">{fmtElapsed(elapsed)}</span>}
+            <TaskStatusGlyph status={status} color={agentColor(index)} />
+          </span>
         </span>
-      )}
+      </div>
     </div>
   )
 }
@@ -224,26 +254,28 @@ function PlanTaskRow({
   return (
     <div className="prow editing">
       <span className="n">{index + 1}</span>
-      <textarea
-        className="ptdesc"
-        value={draft}
-        rows={1}
-        placeholder="Describe this task…"
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            ;(e.target as HTMLTextAreaElement).blur()
-          }
-        }}
-      />
-      {task.app && (
-        <span className="src">
-          <span className="d" style={{ background: agentColor(index) }} />
-          {task.app}
-        </span>
-      )}
+      <div className={`ptbubble ${task.app ? 'has-app' : ''}`}>
+        <textarea
+          className="ptdesc"
+          value={draft}
+          rows={1}
+          placeholder="Describe this task…"
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              ;(e.target as HTMLTextAreaElement).blur()
+            }
+          }}
+        />
+        {task.app && (
+          <span className="src in-bubble">
+            <span className="d" style={{ background: agentColor(index) }} />
+            {task.app}
+          </span>
+        )}
+      </div>
       <span className="prow-acts">
         <button
           className="ra"

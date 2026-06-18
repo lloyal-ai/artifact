@@ -249,7 +249,7 @@ function ConfigFieldRow({
             onKeyDown={(e) => e.key === 'Enter' && save()}
           />
         )}
-        <button className="savebtn" onClick={save}>
+        <button className="savebtn" onClick={field.pathLike ? choose : save}>
           {field.pathLike ? 'Choose…' : 'Save'}
         </button>
       </div>

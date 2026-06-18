@@ -115,22 +115,66 @@ function summarizeResult(tool: string, raw: string): {
         sources: sources.length ? sources : undefined,
       };
     }
-    if (tool === 'search' && Array.isArray(parsed)) {
-      const items = parsed as { heading?: string }[];
+    // Corpus semantic search → { hits: [{ file, heading, score }], … }. Each hit
+    // is a local source (a file/section); emit per-hit metadata into `sources`
+    // so the ledger surfaces corpus sources exactly like web pages. The ledger
+    // is App-Protocol-agnostic — it keys off `sources[]`, not the app/tool name.
+    if (
+      tool === 'search' &&
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      Array.isArray((parsed as { hits?: unknown }).hits)
+    ) {
+      const hits = (parsed as { hits: { file?: string; heading?: string }[] }).hits;
+      const sources: SourceMeta[] = hits
+        .slice(0, 8)
+        .map((h) => ({ title: h.heading || h.file, host: h.file }))
+        .filter((s) => s.title || s.host);
       return {
-        summary: `${items.length} results`,
+        summary: `${hits.length} results`,
         hosts: [],
-        resultCount: items.length,
-        preview: items[0]?.heading ?? null,
+        resultCount: hits.length,
+        preview: hits[0]?.heading ?? hits[0]?.file ?? null,
+        sources: sources.length ? sources : undefined,
       };
     }
+    // Corpus grep → { totalMatches, matches: [{ file, line, text }] }. One local
+    // source per matching file, the matched line as the snippet.
     if (tool === 'grep' && typeof parsed === 'object' && parsed !== null) {
-      const r = parsed as { totalMatches?: number; matchingLines?: number };
+      const r = parsed as {
+        totalMatches?: number;
+        matches?: { file?: string; line?: number; text?: string }[];
+      };
+      const matches = r.matches ?? [];
+      const sources: SourceMeta[] = matches
+        .slice(0, 8)
+        .map((m) => ({
+          title: m.file,
+          host: m.line != null ? `line ${m.line}` : undefined,
+          snippet: m.text,
+        }))
+        .filter((s) => s.title);
       return {
         summary: `${r.totalMatches ?? 0} matches`,
         hosts: [],
         resultCount: r.totalMatches ?? null,
-        preview: null,
+        preview: matches[0]?.file ?? null,
+        sources: sources.length ? sources : undefined,
+      };
+    }
+    // Corpus read_file → { file, content, lines } (or { file, note }). The agent
+    // opened this file: one local source, marked via the fetch-tool name so the
+    // ledger tiers it as "featured" (read closely) rather than merely surveyed.
+    if (tool === 'read_file' && typeof parsed === 'object' && parsed !== null) {
+      const r = parsed as { file?: string; error?: string };
+      if (r.error) return { summary: r.error, hosts: [], resultCount: null, preview: null };
+      const sources: SourceMeta[] = r.file ? [{ title: r.file }] : [];
+      return {
+        summary: `${raw.length}b`,
+        hosts: [],
+        resultCount: null,
+        preview: r.file ?? null,
+        sources: sources.length ? sources : undefined,
       };
     }
     if (
@@ -210,6 +254,8 @@ function createAgent(state: AppState, id: number, patch: Partial<AgentRuntime> =
     id,
     label: `A${state.nextLabelIdx}`,
     phase: 'idle',
+    startedAt: Date.now(),
+    endedAt: null,
     tokenCount: 0,
     toolCallCount: 0,
     taskIndex: null,
@@ -937,6 +983,7 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
         return replaceAgent(working, ev.agentId, (a) => ({
           ...a,
           phase: 'done',
+          endedAt: Date.now(),
           contentBuffer: '',
           recovering: false,
         }));
@@ -945,7 +992,7 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
       const id = working.nextTimelineId;
       const next = replaceAgent(working, ev.agentId, (a) =>
         pushTimeline(
-          { ...a, phase: 'done', contentBuffer: '', recovering: false },
+          { ...a, phase: 'done', endedAt: Date.now(), contentBuffer: '', recovering: false },
           {
             kind: 'report',
             id,

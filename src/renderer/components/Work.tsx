@@ -236,8 +236,13 @@ export function WorkRows({ agent }: { agent: AgentRuntime }): React.ReactElement
   }
 
   // Live report writing — the model is streaming report-tool JSON before the
-  // structured report item lands. Append below the timeline rows.
-  if (agent.contentBuffer.trim()) {
+  // structured report item lands. The `content` phase streams the JSON of
+  // EVERY tool call (search/read args too), not just the terminal report, so
+  // gate on the report shape: `extractStreamingReport` returns non-null only
+  // once the buffer carries the report tool's `"result":"…"` value. Without
+  // this gate, every search/read call briefly flashed a mislabeled "Writing
+  // report" row before its `agent:tool_call` event landed and replaced it.
+  if (agent.contentBuffer.trim() && extractStreamingReport(agent.contentBuffer) !== null) {
     rows.push(<WritingReportRow buffer={agent.contentBuffer} key="writing-report" />)
   }
 

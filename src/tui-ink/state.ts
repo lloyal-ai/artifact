@@ -103,6 +103,12 @@ export interface AgentRuntime {
   phase: 'idle' | 'thinking' | 'content' | 'tool' | 'done';
   tokenCount: number;
   toolCallCount: number;
+  /** Wall-clock spawn time (ms) — start of this task's elapsed timer. */
+  startedAt: number;
+  /** Wall-clock completion time (ms), set when the agent reaches `done`
+   *  (agent:return / agent:recovered). Null while running. Elapsed =
+   *  (endedAt ?? now) − startedAt. */
+  endedAt: number | null;
   /** Research task index this agent was spawned for. Null for synth. */
   taskIndex: number | null;
   /** Short task description, used in the column header when present. */

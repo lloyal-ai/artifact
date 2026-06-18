@@ -276,6 +276,18 @@ input { font-family: inherit; }
 /* clickable plan row → jump to its agent */
 .prow.nav { cursor: pointer; }
 .prow.nav:hover { background: var(--bg-2); }
+/* read-only research-view row: description spans full width, the status glyph +
+   app chip drop to a bottom-right meta line so the app name never narrows the
+   text (mirrors the editing bubble's bottom-right chip). */
+.prow.status .ptcontent { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.prow.status .ptline { min-width: 0; }
+/* Full-width meta line: app chip pinned bottom-left, elapsed + status glyph
+   bottom-right (the right cluster is held right via margin-left:auto so it stays
+   put whether or not an app chip is present). */
+.prow.status .prow-meta { display: flex; align-items: center; gap: 8px; }
+.prow.status .prow-meta .src { margin: 0; }
+.prow.status .prow-meta-r { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+.task-elapsed { font-size: 11px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
 /* agent-colored per-task status glyph (color set inline via currentColor) */
 .tstat { flex: none; width: 18px; height: 18px; display: grid; place-items: center; margin-top: 1px; }
 .tstat svg { width: 15px; height: 15px; }
@@ -290,9 +302,18 @@ input { font-family: inherit; }
 .prow.editing:hover { background: transparent; }
 .prow.editing:hover .prow-acts, .prow.editing:focus-within .prow-acts { opacity: 1; }
 .prow.editing .src { margin-left: 0; margin-top: 0; }
-.ptdesc { flex: 1; min-width: 0; resize: none; field-sizing: content;
+/* The editable task bubble: a relative wrapper so the source chip sits inside
+   the textarea at bottom-right instead of beside it (which narrowed the bubble
+   and pushed it off the long descriptions). */
+.ptbubble { flex: 1; min-width: 0; position: relative; }
+.ptdesc { display: block; width: 100%; box-sizing: border-box; resize: none; field-sizing: content;
   background: var(--bg-2); border: 1px solid transparent; border-radius: 8px;
   color: var(--ink); font: inherit; font-size: 16px; line-height: 1.5; padding: 8px 11px; outline: none; }
+/* Reserve bottom space so the last text line never collides with the chip. */
+.ptbubble.has-app .ptdesc { padding-bottom: 30px; }
+.src.in-bubble { position: absolute; right: 8px; bottom: 7px; margin: 0; padding: 3px 8px;
+  border-radius: 6px; background: color-mix(in srgb, var(--bg-3) 90%, transparent);
+  pointer-events: none; }
 .ptdesc::placeholder { color: var(--ink-4); }
 .ptdesc:hover { border-color: var(--line); }
 .ptdesc:focus { border-color: var(--violet); background: var(--bg-1); }
