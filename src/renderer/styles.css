@@ -37,14 +37,19 @@ input { font-family: inherit; }
 .page { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 /* ── ambient header ── */
-.hdr { flex: none; height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 26px; backdrop-filter: blur(18px); background: linear-gradient(180deg, rgba(15, 18, 26, 0.8), rgba(13, 16, 23, 0.35)); position: relative; z-index: 10; -webkit-app-region: drag; }
-/* Native window-control clearance (set per-platform from window.reasoning.platform):
-   mac traffic-lights are top-LEFT → inset leading; win/linux overlay is
-   top-RIGHT → inset trailing. The bar stays a drag region either way. */
-.hdr.mac { padding-left: 78px; }
-.hdr.win { padding-right: 140px; }
-.hdr button, .hdr .modesw { -webkit-app-region: no-drag; }
-.hdr::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--line), transparent); }
+/* ── tier 1: custom dark titlebar strip (drag region) ──
+   Carries only the centered app name. Reserves space for the native window
+   controls (set per-platform from window.reasoning.platform): mac
+   traffic-lights are top-LEFT → pad-left; win/linux overlay is top-RIGHT →
+   pad-right. The name is absolutely centered so the insets never shift it. */
+.titlebar { flex: none; height: 36px; position: relative; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(11, 13, 20, 0.92), rgba(12, 15, 22, 0.78)); -webkit-app-region: drag; z-index: 11; }
+.titlebar.mac { padding-left: 72px; }
+.titlebar.win { padding-right: 120px; }
+.titlebar .appname { position: absolute; left: 50%; transform: translateX(-50%); font-size: 13px; letter-spacing: 0.02em; color: var(--ink-3); font-weight: 550; }
+
+/* ── tier 2: functional toolbar (NON-drag) ── */
+.toolbar { flex: none; min-height: 64px; display: flex; align-items: center; gap: 16px; padding: 10px 26px; backdrop-filter: blur(18px); background: linear-gradient(180deg, rgba(15, 18, 26, 0.8), rgba(13, 16, 23, 0.35)); position: relative; z-index: 10; }
+.toolbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--line), transparent); }
 .wsbtn { display: flex; align-items: center; gap: 9px; padding: 6px 9px 6px 7px; border-radius: 11px; }
 .wsbtn .glyph { width: 29px; height: 29px; border-radius: 9px; background: conic-gradient(from 210deg, #34d399, #059669, #34d399); display: grid; place-items: center; color: #042018; font-weight: 800; font-size: 13px; box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.25), 0 4px 16px rgba(52, 211, 153, 0.25); }
 .wsbtn .nm { font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
@@ -55,9 +60,10 @@ input { font-family: inherit; }
 .modesw button { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink-3); padding: 8px 16px; border-radius: 9px; transition: 0.14s; }
 .modesw button .mi { width: 16px; height: 16px; }
 .modesw button.on { background: var(--bg-3); color: var(--ink); }
-.hpill { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); padding: 6px 11px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-1); transition: 0.15s; }
-.hpill:hover { border-color: var(--line-2); color: var(--ink); }
+/* Static sources stat (NOT a button — the cog owns Settings). */
+.hpill { display: flex; align-items: baseline; gap: 5px; font-size: 12px; color: var(--ink-2); padding: 6px 11px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-1); }
 .hpill b { color: var(--ink); font-weight: 650; }
+.hpill .lab { color: var(--ink-3); font-size: 10.5px; font-weight: 500; }
 .localdot { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3); padding: 5px 11px; border-radius: 999px; border: 1px solid rgba(52, 211, 153, 0.18); background: linear-gradient(180deg, rgba(52, 211, 153, 0.07), transparent); }
 .localdot .orb { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg), 0 0 10px var(--accent); animation: breathe 2.6s ease-in-out infinite; }
 .localdot b { color: var(--ink-2); font-weight: 600; }

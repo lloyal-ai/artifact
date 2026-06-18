@@ -106,13 +106,15 @@ function spawnEngine(): void {
 }
 
 function createWindow(): void {
-  // Custom-chrome header is a drag region (`-webkit-app-region: drag`) in all
-  // cases; the native window controls render differently per platform and the
-  // header insets its content to clear them (see Header.tsx + preload platform):
+  // Two-tier header: tier 1 (`.titlebar`) is a 36px drag region carrying the
+  // centered app name; tier 2 (`.toolbar`) is the functional row. Native window
+  // controls render in tier 1 differently per platform and the titlebar insets
+  // its name to clear them (see Header.tsx + preload platform):
   //  · macOS — `hiddenInset` keeps the traffic-lights top-LEFT over a frameless
-  //    titlebar; the header insets its LEADING (logo/title) content past them.
+  //    titlebar; `.titlebar.mac` reserves leading space (72px).
   //  · win/linux — `titleBarOverlay` renders native min/max/close top-RIGHT over
-  //    the header; the header insets its TRAILING content past the overlay box.
+  //    the titlebar (height matched to the 36px strip); `.titlebar.win` reserves
+  //    trailing space (120px).
   const isMac = process.platform === 'darwin'
   win = new BrowserWindow({
     width: 1320,
@@ -126,7 +128,7 @@ function createWindow(): void {
     // traffic-lights). Tinted to the header so the buttons sit on-aesthetic.
     titleBarOverlay: isMac
       ? undefined
-      : { color: '#0c0e15', symbolColor: '#aeb5c5', height: 68 },
+      : { color: '#0c0e15', symbolColor: '#aeb5c5', height: 36 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
