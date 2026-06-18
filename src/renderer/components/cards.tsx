@@ -252,7 +252,14 @@ function statusText(a: AgentRuntime): string {
   }
 }
 
-/** A research (or recon) agent card — the streaming centerpiece. */
+/** A research (or recon) agent card — the streaming centerpiece.
+ *
+ *  Live agents render open and streaming (`open` is true while `phase !== done`,
+ *  driven by the caller). A `done` agent renders COLLAPSED by default: the body
+ *  (think rows, tool rows, report) is heavy and the card has already landed in
+ *  scrollback as a finished snapshot — its header alone (label + "Report ready"
+ *  + token count) reads as a result. A click on the header toggles the body so
+ *  the user can re-read the report on demand. */
 export function AgentCard({
   agent,
   colorIdx,
@@ -267,9 +274,13 @@ export function AgentCard({
   carry?: React.ReactNode
 }): React.ReactElement {
   const done = agent.phase === 'done'
+  // Done cards are collapsible (user-toggled); live cards follow the caller's
+  // `open` and never collapse mid-stream.
+  const [expanded, setExpanded] = React.useState(false)
+  const showBody = done ? expanded : open
   const kc = agentColor(colorIdx)
   const pill = done ? (
-    <span className="pill p-done">✓ done</span>
+    <span className="pill p-done">✓ Report ready</span>
   ) : (
     <span className="pill p-live">
       <span className="ld" />
@@ -279,10 +290,13 @@ export function AgentCard({
   const task = agent.taskDescription ?? agent.dependencyHint
   return (
     <div
-      className={`card agent ${done ? '' : 'live'} ${open ? 'open' : ''}`}
+      className={`card agent ${done ? '' : 'live'} ${showBody ? 'open' : ''}`}
       style={{ ['--kc' as string]: kc }}
     >
-      <div className="chead">
+      <div
+        className={`chead ${done ? 'click' : ''}`}
+        onClick={done ? () => setExpanded((e) => !e) : undefined}
+      >
         <span className="cbadge">{agent.label}</span>
         <div className="ctitle">
           <div className="t">{title ?? `Agent ${(agent.taskIndex ?? colorIdx) + 1}`}</div>
@@ -292,9 +306,10 @@ export function AgentCard({
           <span>{agent.toolCallCount} tools</span>
           <span>{agent.tokenCount.toLocaleString()} tok</span>
         </span>
+        {done && <IconChevron className={`chev ${expanded ? 'open' : ''}`} />}
       </div>
       {task && <div className="ctask">{task}</div>}
-      {open && (
+      {showBody && (
         <div className="cbody">
           {carry}
           <WorkRows agent={agent} />

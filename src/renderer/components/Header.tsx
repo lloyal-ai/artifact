@@ -15,8 +15,15 @@ export function Header({
   const setMode = (m: 'flat' | 'deep'): void => {
     if (m !== mode) dispatch({ type: 'change_mode', mode: m })
   }
+  // Native window controls render in different corners per platform, so the
+  // header clears them on opposite ends: macOS traffic-lights sit top-LEFT
+  // (inset the leading logo/title ~78px), win/linux controls-overlay sits
+  // top-RIGHT (inset the trailing buttons ~140px past the overlay box). The
+  // `.hdr` itself stays a `-webkit-app-region: drag` region throughout.
+  const isMac = window.reasoning.platform === 'darwin'
+  const padCls = isMac ? 'hdr mac' : 'hdr win'
   return (
-    <div className="hdr">
+    <div className={padCls}>
       <div className="wsbtn brand">
         <span className="glyph">R</span>
         <span className="nm">reasoning.run</span>

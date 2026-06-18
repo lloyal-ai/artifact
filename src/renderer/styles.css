@@ -38,6 +38,11 @@ input { font-family: inherit; }
 
 /* ── ambient header ── */
 .hdr { flex: none; height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 26px; backdrop-filter: blur(18px); background: linear-gradient(180deg, rgba(15, 18, 26, 0.8), rgba(13, 16, 23, 0.35)); position: relative; z-index: 10; -webkit-app-region: drag; }
+/* Native window-control clearance (set per-platform from window.reasoning.platform):
+   mac traffic-lights are top-LEFT → inset leading; win/linux overlay is
+   top-RIGHT → inset trailing. The bar stays a drag region either way. */
+.hdr.mac { padding-left: 78px; }
+.hdr.win { padding-right: 140px; }
 .hdr button, .hdr .modesw { -webkit-app-region: no-drag; }
 .hdr::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--line), transparent); }
 .wsbtn { display: flex; align-items: center; gap: 9px; padding: 6px 9px 6px 7px; border-radius: 11px; }
@@ -178,6 +183,36 @@ input { font-family: inherit; }
 .wmeta { font-size: 13px; color: var(--ink-3); margin-top: 5px; }
 .wmeta .ok { color: var(--accent-ink); }
 .wthink { font-size: 15px; color: var(--ink-2); line-height: 1.65; border-left: 2px solid var(--line-2); padding-left: 14px; margin-top: 7px; white-space: pre-wrap; }
+/* ── collapsible work-row header (think / report / writing-report) ──
+   A clickable label-row that toggles the body below it. Chevron rotates on
+   open (matches the .card.open .chev pattern). Heavy bodies (report markdown,
+   raw report-JSON stream) cap their height and scroll so a multi-thousand-token
+   payload never blows out the timeline. */
+.wtoggle { display: flex; align-items: center; gap: 9px; padding: 0; font-size: 15px; color: var(--ink); width: 100%; text-align: left; }
+.wtoggle .k { font-weight: 600; color: var(--ink); }
+.wchev { color: var(--ink-4); transition: transform 0.18s; flex: none; width: 14px; height: 14px; margin-left: auto; }
+.wchev.open { transform: rotate(180deg); }
+.wmeta-inline { font-size: 13px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.wreport { margin-top: 10px; max-height: 480px; overflow: auto; border-left: 2px solid var(--line-2); padding: 2px 14px; }
+.wstream { margin-top: 8px; max-height: 480px; overflow: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; word-break: break-word; border-left: 2px solid var(--line-2); padding-left: 14px; }
+/* The grounded-answer markdown rules (.answer-body.md *) are reused for the
+   report body — alias the report region to the same selectors. */
+.wreport.md > :first-child { margin-top: 0; }
+.wreport.md > :last-child { margin-bottom: 0; }
+.wreport.md p { margin: 0 0 12px; font-size: 14.5px; line-height: 1.66; color: var(--ink-2); }
+.wreport.md h1, .wreport.md h2, .wreport.md h3, .wreport.md h4 { color: var(--ink); font-weight: 650; letter-spacing: -0.01em; margin: 18px 0 9px; }
+.wreport.md h1 { font-size: 18px; }
+.wreport.md h2 { font-size: 16px; }
+.wreport.md h3 { font-size: 15px; }
+.wreport.md ul, .wreport.md ol { margin: 0 0 12px; padding-left: 22px; }
+.wreport.md li { margin: 4px 0; font-size: 14.5px; color: var(--ink-2); }
+.wreport.md a { color: var(--accent-ink); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); cursor: pointer; }
+.wreport.md code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em; background: var(--bg-3); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+.wreport.md pre { background: var(--bg-1); border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px; overflow-x: auto; }
+.wreport.md pre code { background: none; border: 0; padding: 0; }
+/* Done agent card — header is a clickable toggle (collapsed by default). */
+.chead.click { cursor: pointer; }
+.chead.click:hover { background: rgba(255, 255, 255, 0.015); }
 .caret { display: inline-block; width: 6px; height: 13px; background: var(--kc); border-radius: 1px; animation: blink 1s steps(1) infinite; vertical-align: -2px; margin-left: 1px; }
 @keyframes blink { 50% { opacity: 0; } }
 .retry { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; color: var(--hot); background: rgba(251, 113, 133, 0.1); border-radius: 999px; padding: 2px 9px; margin-top: 5px; }

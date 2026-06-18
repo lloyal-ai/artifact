@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import type { AppState } from '../../tui-ink/state'
+import type { AgentRuntime, AppState } from '../../tui-ink/state'
 import { IconDone } from '../icons'
 import {
   AgentCard,
@@ -231,7 +231,37 @@ function buildBeats(s: AppState): BeatDef[] {
     })
   }
 
-  if (ids.length > 0 || (researchActive && s.plan)) {
+  // The full research-agent set for this run = the LIVE agents (still in
+  // researchAgentIds) PLUS the FINISHED snapshots the reducer pushed to
+  // scrollback on agent:return/agent:recovered (kind === 'agent'). A live agent
+  // drops out of researchAgentIds and lands in scrollback on the same frame it
+  // finishes, so for one frame it can appear in BOTH — dedupe by agent.id
+  // (prefer the scrollback snapshot, which is the settled done state) and sort
+  // by taskIndex so the fan order is stable as agents finish out-of-spawn-order.
+  //
+  // scrollback PERSISTS across queries (the `query` event preserves it), so it
+  // can hold finished agents from a PRIOR run. `s.agents` does NOT — it resets
+  // to empty on each new query — so an id still present in `s.agents` is the
+  // exact "belongs to the current run" discriminator. Filter finished snapshots
+  // through it so a follow-up query's fan never re-renders last run's agents.
+  const finished = s.scrollback
+    .filter((it): it is Extract<typeof it, { kind: 'agent' }> => it.kind === 'agent')
+    .map((it) => it.agent)
+    .filter((a) => s.agents.has(a.id))
+  const liveAgents = ids
+    .map((id) => s.agents.get(id))
+    .filter((a): a is NonNullable<typeof a> => a != null)
+  const byId = new Map<number, AgentRuntime>()
+  for (const a of liveAgents) byId.set(a.id, a)
+  for (const a of finished) byId.set(a.id, a) // scrollback snapshot wins
+  const allAgents = [...byId.values()].sort(
+    (a, b) => (a.taskIndex ?? 0) - (b.taskIndex ?? 0),
+  )
+
+  if (allAgents.length > 0 || (researchActive && s.plan)) {
+    // Planned count — survives agent pruning (live researchAgentIds.length drops
+    // as agents finish, so it would under-count). Fall back to the merged set.
+    const plannedCount = s.plan?.tasks.length ?? allAgents.length
     if (mode === 'flat') {
       // Parallel — a fork beat, then each agent alternating off both sides.
       B.push({
@@ -242,16 +272,14 @@ function buildBeats(s: AppState): BeatDef[] {
         knot: 'fill',
         node: (
           <SpineEvent
-            title={`Forked ${ids.length || s.plan?.tasks.length} agents with shared context`}
+            title={`Forked ${plannedCount} ${plannedCount === 1 ? 'agent' : 'agents'} with shared context`}
             sub="prefix-shared once · each researches its angle · converges at synthesis"
           />
         ),
       })
-      ids.forEach((id, i) => {
-        const a = s.agents.get(id)
-        if (!a) return
+      allAgents.forEach((a, i) => {
         B.push({
-          key: `agent-${id}`,
+          key: `agent-${a.id}`,
           side: i % 2 === 0 ? 'left' : 'right',
           flag: a.label,
           kc: agentColor(a.taskIndex ?? i),
@@ -262,12 +290,10 @@ function buildBeats(s: AppState): BeatDef[] {
       })
     } else {
       // Deep — one task after another down the spine.
-      ids.forEach((id, i) => {
-        const a = s.agents.get(id)
-        if (!a) return
+      allAgents.forEach((a, i) => {
         const live = a.phase !== 'done'
         B.push({
-          key: `agent-${id}`,
+          key: `agent-${a.id}`,
           side: i % 2 === 0 ? 'left' : 'right',
           flag: `Task ${String(i + 1).padStart(2, '0')}`,
           kc: agentColor(a.taskIndex ?? i),
@@ -278,7 +304,7 @@ function buildBeats(s: AppState): BeatDef[] {
       })
       // Queued tasks not yet spawned.
       const total = s.plan?.tasks.length ?? 0
-      for (let i = ids.length; i < total; i++) {
+      for (let i = allAgents.length; i < total; i++) {
         const t = s.plan?.tasks[i]
         B.push({
           key: `queued-${i}`,

@@ -9,6 +9,10 @@ import { contextBridge, ipcRenderer } from 'electron'
  * (re)load, and `send` dispatches a Command. See `src/renderer/bridge.ts`.
  */
 const api = {
+  /** Host OS — drives platform-aware window-chrome insets in the header
+   *  (native traffic-lights top-left on 'darwin'; controls-overlay top-right on
+   *  'win32'/'linux'). Resolved once at preload time; never changes at runtime. */
+  platform: process.platform,
   /** Subscribe to raw `{seq, ev}` event frames forwarded by main. Returns unsubscribe. */
   onEvent(cb: (frame: unknown) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, frame: unknown) => cb(frame)

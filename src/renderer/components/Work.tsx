@@ -1,6 +1,7 @@
 import React from 'react'
 import type { AgentRuntime, TimelineItem } from '../../tui-ink/state'
-import { IconThink, toolIcon } from '../icons'
+import { IconChevron, IconDone, IconThink, toolIcon } from '../icons'
+import { Markdown } from './Markdown'
 
 // Maps an agent's chronological `timeline` into the mock's work-rows + source
 // chips. Pairs each tool_call with its tool_result (via callId) so the verb and
@@ -18,35 +19,140 @@ function resultMeta(r: Extract<TimelineItem, { kind: 'tool_result' }>): string {
   return hosts ? `${head} · ${hosts}` : head
 }
 
+/**
+ * Extracts the report markdown from a `report` item's body. The body is
+ * `ev.result` from agent:return — the same content RunDirSink writes to
+ * annexure-N.md. It MAY be raw markdown OR a JSON blob `{"result":"## …"}`
+ * (the report-tool argument); handle both by attempting a parse and unwrapping
+ * `.result` only when it yields an object with a string `result`.
+ */
+export function extractReportBody(body: string): string {
+  const trimmed = body.trimStart()
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(body)
+      if (parsed && typeof parsed === 'object' && typeof (parsed as { result?: unknown }).result === 'string') {
+        return (parsed as { result: string }).result
+      }
+    } catch {
+      // not JSON — fall through and treat as raw markdown
+    }
+  }
+  return body
+}
+
+/** A think row — collapsed by default (think bodies can be huge when thinking
+ *  is off and the model funnels report JSON into the block). Default-expand
+ *  only while it's the live row AND short. */
+function ThinkRow({ it }: { it: Extract<TimelineItem, { kind: 'think' }> }): React.ReactElement {
+  const autoOpen = it.live && it.body.length < 280
+  const [open, setOpen] = React.useState(autoOpen)
+  // Track autoOpen so a freshly-live short block expands without clobbering an
+  // explicit user toggle once it grows / closes.
+  const prevAuto = React.useRef(autoOpen)
+  React.useEffect(() => {
+    if (autoOpen !== prevAuto.current) {
+      setOpen(autoOpen)
+      prevAuto.current = autoOpen
+    }
+  }, [autoOpen])
+  const label = it.live ? 'Thinking' : 'Thought'
+  return (
+    <div className={`wrow ${it.live ? 'live' : 'done'}`}>
+      <span className="wic">
+        <IconThink />
+      </span>
+      <div className="wbody">
+        <button className="wtoggle" onClick={() => setOpen((o) => !o)}>
+          <span className="k">{label}</span>
+          <IconChevron className={`wchev ${open ? 'open' : ''}`} />
+        </button>
+        {open && (
+          <div className="wthink">
+            {it.body}
+            {it.live && <span className="caret" />}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** A report row — collapsed "Report" by default; expanding renders the body as
+ *  markdown in a capped, scrollable region (the body can be thousands of
+ *  tokens). */
+function ReportRow({
+  it,
+  tokenCount,
+}: {
+  it: Extract<TimelineItem, { kind: 'report' }>
+  tokenCount: number
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(false)
+  const body = extractReportBody(it.body)
+  return (
+    <div className="wrow done">
+      <span className="wic">
+        <IconDone />
+      </span>
+      <div className="wbody">
+        <button className="wtoggle" onClick={() => setOpen((o) => !o)}>
+          <span className="k">Report</span>
+          <span className="wmeta-inline">{tokenCount.toLocaleString()} tok</span>
+          <IconChevron className={`wchev ${open ? 'open' : ''}`} />
+        </button>
+        {open && (
+          <div className="wreport md">
+            <Markdown text={body} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Live "Writing report" — the model is streaming the report-tool JSON into
+ *  `contentBuffer` (post-</think>, pre-report-item). Collapsed by default;
+ *  expanding shows the raw streaming text, monospace + scrollable. */
+function WritingReportRow({ buffer }: { buffer: string }): React.ReactElement {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <div className="wrow live">
+      <span className="wic">
+        <IconThink />
+      </span>
+      <div className="wbody">
+        <button className="wtoggle" onClick={() => setOpen((o) => !o)}>
+          <span className="k">Writing report</span>
+          <span className="pill p-live">
+            <span className="ld" />
+            writing
+          </span>
+          <IconChevron className={`wchev ${open ? 'open' : ''}`} />
+        </button>
+        {open && (
+          <div className="wstream">
+            {buffer}
+            <span className="caret" />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function WorkRows({ agent }: { agent: AgentRuntime }): React.ReactElement {
   const resultByCall = new Map<number, Extract<TimelineItem, { kind: 'tool_result' }>>()
   for (const it of agent.timeline) {
     if (it.kind === 'tool_result' && it.callId != null) resultByCall.set(it.callId, it)
   }
-  const pairedResults = new Set<number>()
 
   const rows: React.ReactElement[] = []
   for (const it of agent.timeline) {
     if (it.kind === 'think') {
-      rows.push(
-        <div className="wrow live" key={it.id}>
-          <span className="wic">
-            <IconThink />
-          </span>
-          <div className="wbody">
-            <div className="wverb">
-              <span className="k">{it.live ? 'Thinking' : 'Thought'}</span>
-            </div>
-            <div className="wthink">
-              {it.body}
-              {it.live && <span className="caret" />}
-            </div>
-          </div>
-        </div>,
-      )
+      rows.push(<ThinkRow it={it} key={it.id} />)
     } else if (it.kind === 'tool_call') {
       const res = resultByCall.get(it.id)
-      if (res) pairedResults.add(res.id)
       const done = !!res
       const Ic = toolIcon(it.tool)
       rows.push(
@@ -74,8 +180,16 @@ export function WorkRows({ agent }: { agent: AgentRuntime }): React.ReactElement
           </div>
         </div>,
       )
+    } else if (it.kind === 'report') {
+      rows.push(<ReportRow it={it} tokenCount={it.tokenCount} key={it.id} />)
     }
-    // standalone tool_result (no matching call) and report are not work rows.
+    // standalone tool_result (no matching call) is not a work row.
+  }
+
+  // Live report writing — the model is streaming report-tool JSON before the
+  // structured report item lands. Append below the timeline rows.
+  if (agent.contentBuffer.trim()) {
+    rows.push(<WritingReportRow buffer={agent.contentBuffer} key="writing-report" />)
   }
 
   return <div className="work">{rows}</div>
