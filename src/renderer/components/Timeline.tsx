@@ -86,16 +86,51 @@ function buildBeats(s: AppState): BeatDef[] {
     node: <QueryCard query={s.query} />,
   })
 
-  // Scouted — pre-flight recon (only when ≥2 apps triggered it).
+  // Scouted — pre-flight recon (one probe per source, fires only at ≥2 apps).
+  // While probing (phase recon) stream each live probe as a fan, exactly like
+  // the Ink Discovering view (one column per source) and the research fan: this
+  // is the coverage grounding that drives the planner's per-task `app` routing
+  // (the routing itself surfaces downstream as the Plan beat's per-task chips).
+  // Once probing completes, collapse to the compact ScoutedCard summary.
   if (s.reconAgentIds.length > 0) {
-    B.push({
-      key: 'scouted',
-      side: 'left',
-      flag: 'Scouted',
-      kc: 'var(--cyan)',
-      knot: s.phase === 'recon' ? 'live' : 'fill',
-      node: <ScoutedCard state={s} />,
-    })
+    if (s.phase === 'recon') {
+      B.push({
+        key: 'scout-fork',
+        side: 'center',
+        flag: 'Scouting',
+        kc: 'var(--cyan)',
+        knot: 'live',
+        node: (
+          <SpineEvent
+            title={`Probing ${s.reconAgentIds.length} sources in parallel`}
+            sub="grounding which source covers the query before the planner routes tasks"
+            kc="var(--cyan)"
+          />
+        ),
+      })
+      s.reconAgentIds.forEach((id, i) => {
+        const a = s.agents.get(id)
+        if (!a) return
+        B.push({
+          key: `recon-${id}`,
+          side: i % 2 === 0 ? 'left' : 'right',
+          flag: 'Probe',
+          kc: agentColor(i),
+          knot: a.phase === 'done' ? 'fill' : 'live',
+          date: a.phase === 'done' ? 'done' : 'live',
+          node: <AgentCard agent={a} colorIdx={i} open={a.phase !== 'done'} title={`Source probe ${i + 1}`} />,
+        })
+      })
+    } else {
+      B.push({
+        key: 'scouted',
+        side: 'left',
+        flag: 'Scouted',
+        kc: 'var(--cyan)',
+        knot: 'fill',
+        node: <ScoutedCard state={s} />,
+      })
+    }
   }
 
   // Working — a live placeholder so submit → plan isn't a dead wait (the only
