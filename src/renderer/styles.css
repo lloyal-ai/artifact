@@ -249,6 +249,12 @@ input { font-family: inherit; }
 .cinner .send:disabled { background: var(--bg-3); color: var(--ink-4); cursor: default; }
 .chint { text-align: center; margin-top: 11px; font-size: 12.5px; color: var(--ink-4); }
 
+/* toast — transient feedback snackbar, above the fixed composer */
+.toast { position: fixed; left: 50%; bottom: 132px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 11px; max-width: min(560px, calc(100vw - 64px)); padding: 12px 16px 12px 14px; border-radius: 13px; border: 1px solid var(--line-2); background: linear-gradient(180deg, var(--bg-4), var(--bg-3)); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55); animation: toast-in 0.22s ease; }
+.toast-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--kc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--kc) 18%, transparent), 0 0 10px var(--kc); }
+.toast-msg { font-size: 13.5px; color: var(--ink); line-height: 1.45; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
 /* boot / setup screen */
 .boot { flex: 1; display: grid; place-items: center; }
 .bootcard { width: min(560px, 90vw); text-align: center; }

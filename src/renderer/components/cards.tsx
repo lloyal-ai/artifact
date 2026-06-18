@@ -112,6 +112,33 @@ export function PlanCard({ state }: { state: AppState }): React.ReactElement {
   )
 }
 
+/** The Clarify beat — planner asked questions instead of producing a plan. */
+export function ClarifyCard({ state }: { state: AppState }): React.ReactElement {
+  const questions =
+    (state.plan?.clarifyQuestions.length ? state.plan.clarifyQuestions : null) ??
+    state.clarifyContext?.questions ??
+    []
+  return (
+    <div className="card open" style={{ ['--kc' as string]: 'var(--warn)' }}>
+      <div className="chead">
+        <span className="cbadge">?</span>
+        <div className="ctitle">
+          <div className="t">A couple of questions to narrow this down</div>
+          <div className="s">answer in the box below</div>
+        </div>
+      </div>
+      <div className="plist">
+        {questions.map((qn, i) => (
+          <div className="prow" key={i}>
+            <span className="n">{i + 1}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>{qn}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function statusText(a: AgentRuntime): string {
   switch (a.phase) {
     case 'thinking':

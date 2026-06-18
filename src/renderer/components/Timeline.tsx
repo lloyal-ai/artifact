@@ -5,6 +5,7 @@ import {
   AgentCard,
   AnswerCard,
   agentColor,
+  ClarifyCard,
   PlanCard,
   QueryCard,
   ScoutedCard,
@@ -97,8 +98,58 @@ function buildBeats(s: AppState): BeatDef[] {
     })
   }
 
-  // Planned — interactive at plan_review.
-  if (s.plan) {
+  // Working — a live placeholder so submit → plan isn't a dead wait (the only
+  // prior signal was the context gauge). Shown while planning, or while
+  // discovering before any recon probe has spawned (recon's Scouted beat covers
+  // the rest). Morphs into the Planned beat below (same ❖ badge + slot).
+  const preplan =
+    !s.plan &&
+    (s.uiPhase === 'planning' ||
+      (s.uiPhase === 'discovering' && s.reconAgentIds.length === 0))
+  if (preplan) {
+    const scouting = s.uiPhase === 'discovering'
+    B.push({
+      key: 'working',
+      side: 'right',
+      flag: scouting ? 'Scouting' : 'Planning',
+      kc: 'var(--violet)',
+      knot: 'live',
+      node: (
+        <div className="card" style={{ ['--kc' as string]: 'var(--violet)' }}>
+          <div className="chead">
+            <span className="cbadge">❖</span>
+            <div className="ctitle">
+              <div className="t">{scouting ? 'Scouting your sources' : 'Planning your research'}</div>
+              <div className="s">
+                {scouting ? 'checking which apps cover this' : 'deciding what to investigate'}
+              </div>
+            </div>
+            <span className="pill p-live">
+              <span className="ld" />
+              {scouting ? 'scouting' : 'planning'}
+            </span>
+          </div>
+        </div>
+      ),
+    })
+  }
+
+  // Clarify — the planner asked questions instead of producing a research
+  // plan. Replaces the Planned beat (a clarify plan has 0 tasks, so PlanCard
+  // would render a broken "Research plan — 0 tasks").
+  const clarifying =
+    (s.plan && s.plan.intent === 'clarify') || s.uiPhase === 'clarifying'
+  if (clarifying) {
+    B.push({
+      key: 'clarify',
+      side: 'right',
+      flag: 'Clarify',
+      kc: 'var(--warn)',
+      knot: 'live',
+      node: <ClarifyCard state={s} />,
+    })
+  } else if (s.plan && s.plan.intent === 'research') {
+    // Planned — interactive at plan_review.
     B.push({
       key: 'planned',
       side: 'right',

@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import type { Toast as ToastModel } from '../tui-ink/state'
 import { useEngineState } from './bridge'
 import { Boot } from './components/Boot'
 import { Composer } from './components/Composer'
@@ -30,7 +31,45 @@ export function App(): React.ReactElement {
       <Header state={state} onOpenSettings={() => setSettingsOpen(true)} />
       {fresh ? <Welcome /> : <Timeline state={state} />}
       <Composer state={state} />
+      <Toast toast={state.toast} />
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+    </div>
+  )
+}
+
+const TOAST_TONE: Record<ToastModel['tone'], string> = {
+  success: 'var(--accent)',
+  warn: 'var(--warn)',
+  error: 'var(--hot)',
+  info: 'var(--ink-2)',
+}
+
+/**
+ * Transient feedback snackbar, driven by `state.toast`. Auto-dismisses ~4s
+ * after a new toast lands — the effect is keyed on `toast.id`, so each fresh
+ * toast (re)arms the timer and the cleanup clears the prior one. Dismissal is
+ * purely visual (local `shown`); the reducer clears `state.toast` on the next
+ * participation toggle. Sits above the fixed Composer so the two never overlap.
+ */
+function Toast({ toast }: { toast: ToastModel | null }): React.ReactElement | null {
+  const [shown, setShown] = useState(false)
+
+  useEffect(() => {
+    if (!toast) {
+      setShown(false)
+      return
+    }
+    setShown(true)
+    const timer = setTimeout(() => setShown(false), 4000)
+    return () => clearTimeout(timer)
+  }, [toast?.id])
+
+  if (!toast || !shown) return null
+  const kc = TOAST_TONE[toast.tone]
+  return (
+    <div className="toast" role="status" style={{ ['--kc' as string]: kc }}>
+      <span className="toast-dot" />
+      <span className="toast-msg">{toast.message}</span>
     </div>
   )
 }

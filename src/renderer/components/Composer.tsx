@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { AppState } from '../../tui-ink/state'
 import { dispatch } from '../bridge'
 import { IconSend } from '../icons'
@@ -9,6 +9,15 @@ import { IconSend } from '../icons'
  */
 export function Composer({ state }: { state: AppState }): React.ReactElement {
   const [q, setQ] = useState('')
+
+  // Seed the input from `edit_plan` (reducer sets composerPrefill via
+  // ui:composer). Keyed on the prefill value: a non-empty value re-seeds the
+  // box, but we don't dispatch — so a later manual edit/clear sticks until the
+  // next distinct prefill arrives.
+  useEffect(() => {
+    if (state.composerPrefill) setQ(state.composerPrefill)
+  }, [state.composerPrefill])
+
   const clarifying = state.uiPhase === 'clarifying'
   const canSubmit = state.uiPhase === 'composer' || state.uiPhase === 'done' || clarifying
   const placeholder = clarifying
