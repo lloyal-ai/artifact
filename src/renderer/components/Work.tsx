@@ -41,6 +41,46 @@ export function extractReportBody(body: string): string {
   return body
 }
 
+/**
+ * Decode a PARTIAL report-tool JSON stream for live display. The model streams
+ * `{"result":"## …with escaped \n…"}` token-by-token, so a full `JSON.parse`
+ * fails mid-stream. Locate the `result` string value and decode its escapes up
+ * to the (not-yet-arrived) closing quote, so the streaming report renders as
+ * clean markdown instead of raw escaped JSON. Stops at an incomplete escape at
+ * the tail (waits for the next token). Returns null when the buffer isn't yet a
+ * recognizable report — the caller then shows the raw text.
+ */
+const ESCAPES: Record<string, string> = {
+  n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/',
+}
+export function extractStreamingReport(buffer: string): string | null {
+  const m = /"result"\s*:\s*"/.exec(buffer)
+  if (!m) return null
+  let i = m.index + m[0].length
+  let out = ''
+  while (i < buffer.length) {
+    const ch = buffer[i]
+    if (ch === '"') break // unescaped closing quote → end of the result string
+    if (ch === '\\') {
+      const next = buffer[i + 1]
+      if (next === undefined) break // incomplete escape at the stream tail
+      if (next === 'u') {
+        const hex = buffer.slice(i + 2, i + 6)
+        if (hex.length < 4) break // incomplete \uXXXX — wait for more tokens
+        out += String.fromCharCode(parseInt(hex, 16))
+        i += 6
+        continue
+      }
+      out += ESCAPES[next] ?? next
+      i += 2
+      continue
+    }
+    out += ch
+    i += 1
+  }
+  return out
+}
+
 /** A think row — collapsed by default (think bodies can be huge when thinking
  *  is off and the model funnels report JSON into the block). Default-expand
  *  only while it's the live row AND short. */
@@ -116,6 +156,9 @@ function ReportRow({
  *  expanding shows the raw streaming text, monospace + scrollable. */
 function WritingReportRow({ buffer }: { buffer: string }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
+  // Decode the streaming report JSON so it reads as markdown, not escaped JSON.
+  // Falls back to the raw buffer until the `"result":"…"` value appears.
+  const report = extractStreamingReport(buffer)
   return (
     <div className="wrow live">
       <span className="wic">
@@ -130,12 +173,18 @@ function WritingReportRow({ buffer }: { buffer: string }): React.ReactElement {
           </span>
           <IconChevron className={`wchev ${open ? 'open' : ''}`} />
         </button>
-        {open && (
-          <div className="wstream">
-            {buffer}
-            <span className="caret" />
-          </div>
-        )}
+        {open &&
+          (report ? (
+            <div className="wreport md">
+              <Markdown text={report} />
+              <span className="caret" />
+            </div>
+          ) : (
+            <div className="wstream">
+              {buffer}
+              <span className="caret" />
+            </div>
+          ))}
       </div>
     </div>
   )

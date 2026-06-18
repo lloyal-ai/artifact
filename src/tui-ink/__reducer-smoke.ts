@@ -498,7 +498,7 @@ check('report path: content streams, then report event clears buffer + pushes st
   assert.equal((last as { body: string }).body, 'The final answer is X.');
 });
 
-check('agent:done sets phase=idle (not done) so recovery produces stream', () => {
+check('agent:done marks recovering; the recovery stream routes to contentBuffer (not a think block)', () => {
   const s = drive([
     { type: 'query', query: 'q', warm: false },
     {
@@ -513,18 +513,45 @@ check('agent:done sets phase=idle (not done) so recovery produces stream', () =>
     { type: 'agent:spawn', agentId: 1, parentAgentId: 0 } as WorkflowEvent,
     { type: 'agent:produce', agentId: 1, text: 'unfinished thought', tokenCount: 3 } as WorkflowEvent,
     { type: 'agent:done', agentId: 1 } as WorkflowEvent,
-    // Recovery streams tokens
+    // recoverInline force-extracts the report (eager grammar, no </think>).
     { type: 'agent:produce', agentId: 1, text: 'recovery output', tokenCount: 5 } as WorkflowEvent,
   ]);
   const a = s.agents.get(1)!;
-  // The ORIGINAL think closed on agent:done; recovery opened a NEW think.
+  // The ORIGINAL think closed on agent:done; recovery does NOT open a new one —
+  // it streams into contentBuffer (rendered as "Writing report"), not "Thinking".
   const thinks = a.timeline.filter((it) => it.kind === 'think');
-  assert.equal(thinks.length, 2);
+  assert.equal(thinks.length, 1);
   assert.equal((thinks[0] as { live: boolean; body: string }).live, false);
   assert.equal((thinks[0] as { body: string }).body, 'unfinished thought');
-  assert.equal((thinks[1] as { live: boolean; body: string }).live, true);
-  assert.equal((thinks[1] as { body: string }).body, 'recovery output');
-  assert.equal(a.phase, 'thinking');
+  assert.equal(a.recovering, true);
+  assert.equal(a.contentBuffer, 'recovery output');
+  assert.equal(a.phase, 'idle');
+});
+
+check('agent:recovered clears recovering + contentBuffer and freezes the report', () => {
+  const s = drive([
+    { type: 'query', query: 'q', warm: false },
+    {
+      type: 'plan',
+      intent: 'research',
+      tasks: [{ description: 'A' }] as never,
+      clarifyQuestions: [],
+      tokenCount: 1,
+      timeMs: 1,
+    },
+    { type: 'research:start', agentCount: 1, mode: 'flat' },
+    { type: 'agent:spawn', agentId: 1, parentAgentId: 0 } as WorkflowEvent,
+    { type: 'agent:done', agentId: 1 } as WorkflowEvent,
+    { type: 'agent:produce', agentId: 1, text: '{"result":"X"}', tokenCount: 5 } as WorkflowEvent,
+    { type: 'agent:recovered', agentId: 1, result: 'X' } as WorkflowEvent,
+  ]);
+  const a = s.agents.get(1)!;
+  assert.equal(a.recovering, false);
+  assert.equal(a.contentBuffer, '');
+  assert.equal(a.phase, 'done');
+  const reports = a.timeline.filter((it) => it.kind === 'report');
+  assert.equal(reports.length, 1);
+  assert.equal((reports[0] as { body: string }).body, 'X');
 });
 
 check('config:loaded seeds config without forcing a uiPhase transition', () => {

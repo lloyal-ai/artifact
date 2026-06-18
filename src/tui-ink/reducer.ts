@@ -176,6 +176,7 @@ function createAgent(state: AppState, id: number, patch: Partial<AgentRuntime> =
     pendingToolCallId: null,
     retry: null,
     contentBuffer: '',
+    recovering: false,
     timeline: [],
     ...patch,
   };
@@ -736,6 +737,19 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
         }));
       }
 
+      // Recovery stream (post agent:done): `recoverInline` force-extracts the
+      // report under an EAGER report grammar with no `<think>`/`</think>`.
+      // Route it into contentBuffer (→ "Writing report") instead of opening a
+      // think block, so a forced report isn't mislabeled as the agent
+      // "Thinking". Cleared on agent:return/recovered. See docs/upstream-issues.md.
+      if (acting.recovering) {
+        return replaceAgent(working, acting.id, (a) => ({
+          ...a,
+          tokenCount: ev.tokenCount,
+          contentBuffer: a.contentBuffer + ev.text,
+        }));
+      }
+
       // Re-enter thinking after tool_result / recovery / initial idle.
       if (acting.phase !== 'thinking' || acting.currentThinkId === null) {
         if (acting.phase === 'tool' || acting.phase === 'idle') {
@@ -880,13 +894,14 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
           ...a,
           phase: 'done',
           contentBuffer: '',
+          recovering: false,
         }));
       }
 
       const id = working.nextTimelineId;
       const next = replaceAgent(working, ev.agentId, (a) =>
         pushTimeline(
-          { ...a, phase: 'done', contentBuffer: '' },
+          { ...a, phase: 'done', contentBuffer: '', recovering: false },
           {
             kind: 'report',
             id,
@@ -930,20 +945,16 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
       // Do NOT mark the agent `done` here. In the stall-break path,
       // agent:done fires BEFORE recoverInline streams recovery tokens via
       // agent:produce → agent:recovered. Freezing to `done` would drop those
-      // tokens. Force-close any live think (recovery opens a fresh one on
-      // its first produce) and step back to `idle` so the produce handler's
-      // re-enter-thinking branch fires. Only agent:return / agent:recovered
-      // mark `done`.
+      // tokens. Force-close any live think and step back to `idle`, marking
+      // the agent `recovering` so the produce handler routes the forced
+      // report into contentBuffer (→ "Writing report") rather than a think
+      // block. Only agent:return / agent:recovered mark `done`.
       //
-      // Clear contentBuffer too: if the agent was in `content` phase when
-      // killed (mid tool-call JSON), the partial buffer never resolves to a
-      // tool_call, and ContentStream's `▸ streaming` label would keep
-      // squatting at the bottom of the column for the entire recovery
-      // duration — misleading the user into thinking the agent is still live.
-      // Recovery emits agent:produce into a fresh think block, not back into
-      // contentBuffer, so clearing it here has no downside.
+      // Clear the stale contentBuffer too: if the agent was in `content` phase
+      // when killed (mid tool-call JSON), the partial buffer never resolves to
+      // a tool_call; recovery refills it with the actual forced report.
       const agent = state.agents.get(ev.agentId);
-      if (!agent) return state;
+      if (!agent || agent.phase === 'done') return state;
       let working = state;
       if (agent.currentThinkId !== null) {
         const thinkItem = agent.timeline.find((it) => it.id === agent.currentThinkId);
@@ -954,6 +965,7 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
         ...a,
         phase: 'idle',
         contentBuffer: '',
+        recovering: true,
       }));
     }
 

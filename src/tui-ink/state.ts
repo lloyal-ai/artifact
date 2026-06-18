@@ -100,6 +100,14 @@ export interface AgentRuntime {
    *  (the model is writing tool-call JSON — report body lives inside).
    *  Cleared on tool_call / report (those fire structured items instead). */
   contentBuffer: string;
+  /** True while the agent is being force-recovered: `agent:done` fired (the
+   *  agent stalled without a voluntary report) and `recoverInline` is streaming
+   *  a forced report under an EAGER report grammar (no `<think>`/`</think>`).
+   *  Routes those `agent:produce` tokens into `contentBuffer` (→ "Writing
+   *  report") instead of a think block, so a recovered report isn't mislabeled
+   *  as the agent "Thinking". Set on `agent:done`, cleared on
+   *  `agent:return`/`agent:recovered`. See docs/upstream-issues.md. */
+  recovering: boolean;
   /** Per-agent chronological stream. */
   timeline: TimelineItem[];
 }
