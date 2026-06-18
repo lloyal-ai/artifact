@@ -1,19 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useState } from 'react'
 import type { AppDescriptor } from '../../tui-ink/state'
 import { dispatch, useEngineState, useEngineStore } from '../bridge'
 
 /**
- * Settings slide-over — installed AgentApps + read-only Advanced.
+ * Settings drawer BODY — installed AgentApps + Advanced. The slide-over shell
+ * (scrim, panel, focus-trap, close) lives in the shared `Drawer`; this exports
+ * just the body content (`SettingsBody`) so it composes into the multi-mode
+ * inspector alongside the Sources ledger.
  *
  * Driven by `useEngineStore(s => s.apps)` (the engine-built AppDescriptor
  * snapshot, forwarded over the `apps:state` event → reduce → state.apps) and
  * `useEngineState()` for the model/runtime rows in Advanced.
  *
  * Apps come from the signed channel, never hardwired. Each card renders from
- * the app's manifest joined with its signed catalog metadata. Config fields
- * are READ-ONLY in this increment — only the enable toggle is interactive
- * (dispatches the existing `toggle_participation` command). The "Install an
- * app" row opens apps.lloyal.ai in the system browser.
+ * the app's manifest joined with its signed catalog metadata. The enable toggle
+ * dispatches `toggle_participation`; config fields dispatch `set_app_config`.
+ * The "Install an app" row opens apps.lloyal.ai in the system browser.
  */
 
 // ── Entitlement pills ────────────────────────────────────────────
@@ -434,7 +436,48 @@ function AppCard({ descriptor }: { descriptor: AppDescriptor }): React.ReactElem
   )
 }
 
-// ── Advanced — read-only model / runtime info ────────────────────
+// ── Advanced — model / runtime info + output folder ──────────────
+
+/** Editable output-folder row. Unlike the model rows (fixed to keep apps
+ *  behaving as tested), the output folder is harness config the user owns:
+ *  where each run's report.md + annexure-N.md land. Reads
+ *  `config.sources.outputDir` (always set — main passes `--output-dir`), edits
+ *  via `set_output_dir`, and "Choose…" opens the native folder picker. */
+function OutputField(): React.ReactElement {
+  const stored = useEngineState().config?.sources?.outputDir ?? ''
+  const [draft, setDraft] = useState(stored)
+  React.useEffect(() => setDraft(stored), [stored])
+
+  const commit = (v: string): void => {
+    const next = v.trim()
+    if (next) dispatch({ type: 'set_output_dir', path: next })
+  }
+  const choose = async (): Promise<void> => {
+    const dir = await window.reasoning.chooseDirectory()
+    if (dir === null) return
+    setDraft(dir)
+    commit(dir)
+  }
+  return (
+    <div className="field">
+      <div className="field-l">
+        <span className="k">Output folder</span>
+        <span className="badge">FOLDER</span>
+      </div>
+      <div className="inp">
+        <input
+          value={draft}
+          placeholder="Where reports are written"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && commit(draft)}
+        />
+        <button className="savebtn" onClick={choose}>
+          Choose…
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function Advanced(): React.ReactElement {
   const config = useEngineState().config
@@ -466,8 +509,10 @@ function Advanced(): React.ReactElement {
           <span className="iv">{nCtx.toLocaleString()} tokens</span>
         </div>
       </div>
+      <OutputField />
       <div className="adv-note">
-        Fixed to keep every app behaving exactly as tested · compute backend detected automatically.
+        Model + reranker are fixed to keep every app behaving exactly as tested · compute backend detected
+        automatically.
       </div>
     </div>
   )
@@ -478,104 +523,47 @@ function basename(p: string): string {
   return i === -1 ? p : p.slice(i + 1)
 }
 
-// ── Drawer ───────────────────────────────────────────────────────
+// ── Settings drawer body ─────────────────────────────────────────
 
-// Tab-cycle focusable selector — interactive elements that aren't disabled or
-// removed from the tab order.
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-
-export function Settings({ onClose }: { onClose: () => void }): React.ReactElement {
+/** The Settings inspector body (rendered inside the shared `Drawer` shell).
+ *  Apps list + Install row + Advanced. */
+export function SettingsBody(): React.ReactElement {
   const apps = useEngineStore((s) => s.apps)
-  const panelRef = useRef<HTMLDivElement>(null)
-
-  // Esc closes the drawer (the scrim also closes on click), and Tab/Shift+Tab
-  // is trapped within the panel so focus can't escape to the app behind it.
-  // On open we focus the first focusable element; on close we restore focus to
-  // whatever opened the drawer (the Settings button).
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    const panel = panelRef.current
-    const first = panel?.querySelector<HTMLElement>(FOCUSABLE)
-    first?.focus()
-
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        onClose()
-        return
-      }
-      if (e.key !== 'Tab' || !panel) return
-      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))
-      if (items.length === 0) {
-        e.preventDefault()
-        return
-      }
-      const firstEl = items[0]
-      const lastEl = items[items.length - 1]
-      const active = document.activeElement
-      // Wrap at the edges; also pull focus back in if it has somehow escaped.
-      if (e.shiftKey) {
-        if (active === firstEl || !panel.contains(active)) {
-          e.preventDefault()
-          lastEl.focus()
-        }
-      } else if (active === lastEl || !panel.contains(active)) {
-        e.preventDefault()
-        firstEl.focus()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      opener?.focus?.()
-    }
-  }, [onClose])
   return (
     <>
-      <div className="scrim" onClick={onClose} />
-      <div className="panel" ref={panelRef}>
-        <div className="panel-hd">
-          <div className="t">Settings</div>
-          <button className="x" onClick={onClose} title="Close">
-            ✕
-          </button>
-        </div>
-        <div className="panel-bd">
-          <div className="sec-head">
-            <span className="sh-t">Apps</span>
+      <div className="sec-head">
+        <span className="sh-t">Apps</span>
+      </div>
+
+      {apps.map((descriptor) => (
+        <AppCard key={descriptor.name} descriptor={descriptor} />
+      ))}
+
+      <div
+        className="install"
+        onClick={() => window.reasoning.openExternal('https://apps.lloyal.ai')}
+      >
+        <span className="plus">＋</span>
+        <div>
+          <div className="it">Install an app</div>
+          <div className="is">
+            From the signed channel · <code>apps.lloyal.ai</code>
           </div>
-
-          {apps.map((descriptor) => (
-            <AppCard key={descriptor.name} descriptor={descriptor} />
-          ))}
-
-          <div
-            className="install"
-            onClick={() => window.reasoning.openExternal('https://apps.lloyal.ai')}
-          >
-            <span className="plus">＋</span>
-            <div>
-              <div className="it">Install an app</div>
-              <div className="is">
-                From the signed channel · <code>apps.lloyal.ai</code>
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              fontSize: 12.5,
-              color: 'var(--ink-4)',
-              lineHeight: 1.5,
-              padding: '14px 2px 2px',
-            }}
-          >
-            App changes take effect on your next run — not one already in progress.
-          </div>
-
-          <Advanced />
         </div>
       </div>
+
+      <div
+        style={{
+          fontSize: 12.5,
+          color: 'var(--ink-4)',
+          lineHeight: 1.5,
+          padding: '14px 2px 2px',
+        }}
+      >
+        App changes take effect on your next run — not one already in progress.
+      </div>
+
+      <Advanced />
     </>
   )
 }

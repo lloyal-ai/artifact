@@ -36,6 +36,16 @@ const api = {
   chooseDirectory(): Promise<string | null> {
     return ipcRenderer.invoke('engine:choose-directory') as Promise<string | null>
   },
+  /** Reveal a local file/folder in Finder/Explorer (filesystem source rows,
+   *  "Open run folder"). The path must be absolute. */
+  revealItem(path: string): void {
+    void ipcRenderer.invoke('engine:reveal-item', path)
+  },
+  /** Export a print-styled HTML document to a PDF via a Save dialog. Resolves
+   *  to the saved absolute path, or null if the user cancelled. */
+  exportPdf(opts: { defaultName: string; html: string }): Promise<string | null> {
+    return ipcRenderer.invoke('engine:export-pdf', opts) as Promise<string | null>
+  },
 }
 
 contextBridge.exposeInMainWorld('reasoning', api)

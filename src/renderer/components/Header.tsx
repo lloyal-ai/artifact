@@ -1,16 +1,12 @@
 import React from 'react'
 import type { AppState } from '../../tui-ink/state'
 import { dispatch } from '../bridge'
-import { IconSettings } from '../icons'
+import { useUiNav } from '../ui-store'
+import { IconList, IconSettings } from '../icons'
 import { Gauge } from './Gauge'
 
-export function Header({
-  state,
-  onOpenSettings,
-}: {
-  state: AppState
-  onOpenSettings: () => void
-}): React.ReactElement {
+export function Header({ state }: { state: AppState }): React.ReactElement {
+  const openDrawer = useUiNav((s) => s.openDrawer)
   const mode = state.mode ?? 'flat'
   const setMode = (m: 'flat' | 'deep'): void => {
     if (m !== mode) dispatch({ type: 'change_mode', mode: m })
@@ -63,11 +59,16 @@ export function Header({
           <b>Local</b>
         </div>
         <Gauge pct={state.pressure?.pct ?? 0} />
-        <span className="hpill" title="Unique sources the agents have cited">
+        <button
+          className="hpill"
+          title="Open the source ledger — every source the agents cited"
+          onClick={() => openDrawer('sources')}
+        >
+          <IconList className="hpill-ic" />
           <b>{state.sourceCount}</b>
           <span className="lab">sources</span>
-        </span>
-        <button className="iconbtn" title="Settings" onClick={onOpenSettings}>
+        </button>
+        <button className="iconbtn" title="Settings" onClick={() => openDrawer('settings')}>
           <IconSettings />
         </button>
       </div>

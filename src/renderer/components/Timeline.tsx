@@ -285,7 +285,7 @@ function buildBeats(s: AppState): BeatDef[] {
           kc: agentColor(a.taskIndex ?? i),
           knot: a.phase === 'done' ? 'fill' : 'live',
           date: a.phase === 'done' ? 'done' : 'live',
-          node: <AgentCard agent={a} colorIdx={a.taskIndex ?? i} open={a.phase !== 'done'} />,
+          node: <AgentCard agent={a} colorIdx={a.taskIndex ?? i} open={a.phase !== 'done'} showFooter />,
         })
       })
     } else {
@@ -299,7 +299,7 @@ function buildBeats(s: AppState): BeatDef[] {
           kc: agentColor(a.taskIndex ?? i),
           knot: live ? 'live' : 'fill',
           date: live ? 'live' : 'done',
-          node: <AgentCard agent={a} colorIdx={a.taskIndex ?? i} open={live} />,
+          node: <AgentCard agent={a} colorIdx={a.taskIndex ?? i} open={live} showFooter />,
         })
       })
       // Queued tasks not yet spawned.

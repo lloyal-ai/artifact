@@ -465,3 +465,73 @@ input { font-family: inherit; }
 .irow .il { color: var(--ink-3); }
 .irow .iv { color: var(--ink); font-weight: 550; font-variant-numeric: tabular-nums; }
 .adv-note { font-size: 12.5px; color: var(--ink-4); padding: 13px 1px 6px; line-height: 1.5; }
+
+/* ── Output folder field (Advanced — editable, unlike model rows) ── */
+.adv .field { margin-top: 14px; }
+
+/* ── Multi-mode inspector drawer — shared header action slot ── */
+.drawer-act { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+  background: var(--bg-3); border: 1px solid var(--line-2); border-radius: 8px; padding: 5px 11px; cursor: pointer; transition: .15s; }
+.drawer-act:hover { color: var(--ink); border-color: var(--accent); }
+
+/* header sources stat — now a button that opens the source ledger */
+.hpill { align-items: center; cursor: pointer; font-family: inherit; transition: .15s; }
+.hpill:hover { border-color: var(--line-2); color: var(--ink); }
+.hpill .hpill-ic { width: 13px; height: 13px; color: var(--ink-3); flex: none; }
+
+/* ── Source ledger (drawer 'sources' mode) — multi-line page rows ── */
+.srcledger { display: flex; flex-direction: column; gap: 7px; }
+.srcledger-count { font-size: 12px; color: var(--ink-3); margin: 2px 2px 8px; font-variant-numeric: tabular-nums; }
+.srcledger-empty { font-size: 13.5px; color: var(--ink-3); line-height: 1.55; padding: 26px 4px; }
+.srow { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left;
+  padding: 12px 13px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2); }
+.srow.web { cursor: pointer; transition: .15s; }
+.srow.web:hover { border-color: var(--accent); background: var(--bg-3); }
+.srow.local { cursor: default; }
+/* avatar: letter/tool tile, favicon, or og thumbnail (local refs only) */
+.srow-ic { width: 34px; height: 34px; border-radius: 9px; background: var(--bg-3); display: grid; place-items: center;
+  flex: none; font-size: 15px; font-weight: 700; }
+.srow-ic.letter { color: var(--kc, var(--ink)); }
+.srow-ic svg { width: 17px; height: 17px; }
+.srow-fav { width: 18px; height: 18px; border-radius: 4px; object-fit: cover; }
+.srow-thumb { width: 56px; height: 42px; border-radius: 8px; overflow: hidden; flex: none; background: var(--bg-3); }
+.srow-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.srow-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.srow-top { display: flex; align-items: baseline; gap: 10px; }
+.srow-label { font-size: 14px; color: var(--ink); font-weight: 600; line-height: 1.3; flex: 1; min-width: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.srow-host { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow-snippet { font-size: 12.5px; color: var(--ink-2); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.srow-tasks { display: flex; flex-wrap: wrap; gap: 5px; flex: none; justify-content: flex-end; }
+.stask { font-size: 10.5px; font-weight: 600; color: var(--kc); white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--kc) 42%, transparent); border-radius: 999px; padding: 2px 8px; }
+
+/* ── Agent / answer footer — action row BELOW the card ── */
+.agfoot { display: flex; align-items: center; gap: 4px; margin: 6px 2px 2px; padding: 2px; opacity: 0.68; transition: opacity .15s; }
+.agfoot:hover { opacity: 1; }
+.agfoot-act { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 550; color: var(--ink-3);
+  background: transparent; border: 0; border-radius: 8px; padding: 6px 9px; cursor: pointer; transition: .12s; }
+.agfoot-act:hover { color: var(--ink); background: var(--bg-3); }
+.agfoot-act svg { width: 14px; height: 14px; }
+.agfoot-act.icon { padding: 6px; }
+.agfoot-more { position: relative; }
+.agfoot-menu { position: absolute; bottom: calc(100% + 4px); right: 0; z-index: 20; min-width: 168px;
+  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--shadow); padding: 5px; display: flex; flex-direction: column; }
+.agfoot-menu button { text-align: left; font-size: 13px; color: var(--ink-2); background: transparent; border: 0; border-radius: 7px; padding: 8px 10px; cursor: pointer; }
+.agfoot-menu button:hover { color: var(--ink); background: var(--bg-3); }
+
+/* ── Source ledger grouping (Featured / Surveyed) + cited star ── */
+.srcsec { display: flex; align-items: baseline; gap: 9px; margin: 16px 2px 9px; }
+.srcsec:first-child { margin-top: 4px; }
+.srcsec-h { font-size: 13px; font-weight: 650; letter-spacing: 0.01em; color: var(--ink); text-transform: uppercase; }
+.srcsec-n { font-size: 11px; font-weight: 600; color: var(--ink-3); background: var(--bg-3); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
+.srcsec-s { font-size: 12px; color: var(--ink-3); margin-left: auto; }
+.stask.cited { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); font-weight: 650; }
+
+/* ── Report preview pane (drawer mode 'report') + Save-as-PDF ── */
+.panel.wide { width: min(680px, 92vw); }
+.report-bar { display: flex; justify-content: flex-end; padding: 0 0 14px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.report-bar .btn { font-size: 13.5px; }
+.report-doc { padding-bottom: 30px; }

@@ -1,11 +1,13 @@
 import React from 'react'
 import type { ResearchTask } from '@lloyal-labs/rig'
-import type { AgentRuntime, AppState } from '../../tui-ink/state'
-import { dispatch } from '../bridge'
+import type { AgentRuntime, AppState, TimelineItem } from '../../tui-ink/state'
+import { dispatch, useEngineStore } from '../bridge'
 import { useUiNav } from '../ui-store'
+import { agentSourceRows } from '../sources'
 import { IconChevron } from '../icons'
+import { AgentFooter } from './AgentFooter'
 import { Markdown } from './Markdown'
-import { SourceChips, WorkRows } from './Work'
+import { SourceChips, WorkRows, extractReportBody } from './Work'
 
 export const AGENT_COLORS = ['var(--a1)', 'var(--a2)', 'var(--a3)', 'var(--a4)', 'var(--a5)']
 export const agentColor = (i: number): string => AGENT_COLORS[i % AGENT_COLORS.length]
@@ -357,6 +359,29 @@ function statusText(a: AgentRuntime): string {
   }
 }
 
+/** The first `report` item in an agent's timeline, or null. */
+function reportItemOf(agent: AgentRuntime): Extract<TimelineItem, { kind: 'report' }> | null {
+  for (const it of agent.timeline) if (it.kind === 'report') return it
+  return null
+}
+
+/** A readable markdown transcript of an agent's full thread — the "copy full
+ *  thread" payload in the footer overflow. */
+function agentTranscript(agent: AgentRuntime): string {
+  const out: string[] = []
+  for (const it of agent.timeline) {
+    if (it.kind === 'think') out.push(`### Thinking\n\n${it.body.trim()}`)
+    else if (it.kind === 'tool_call') out.push(`**${it.tool}** ${it.argsSummary}`.trim())
+    else if (it.kind === 'tool_result') {
+      const meta =
+        it.resultCount != null ? `${it.resultCount} results` : `${(it.byteLength / 1000).toFixed(1)} kb`
+      const hosts = it.hosts.length ? ` · ${it.hosts.join(', ')}` : ''
+      out.push(`> ${meta}${hosts}`)
+    } else if (it.kind === 'report') out.push(`## Report\n\n${extractReportBody(it.body)}`)
+  }
+  return out.join('\n\n')
+}
+
 /** A research (or recon) agent card — the streaming centerpiece.
  *
  *  Live agents render open and streaming (`open` is true while `phase !== done`,
@@ -364,19 +389,25 @@ function statusText(a: AgentRuntime): string {
  *  (think rows, tool rows, report) is heavy and the card has already landed in
  *  scrollback as a finished snapshot — its header alone (label + "Report ready"
  *  + token count) reads as a result. A click on the header toggles the body so
- *  the user can re-read the report on demand. */
+ *  the user can re-read the report on demand.
+ *
+ *  `showFooter` (research agents only — not recon probes) renders the
+ *  AgentFooter as a sibling BELOW the card once the agent is done and has a
+ *  report: Copy · Export · Sources (N) · …. */
 export function AgentCard({
   agent,
   colorIdx,
   open,
   title,
   carry,
+  showFooter,
 }: {
   agent: AgentRuntime
   colorIdx: number
   open: boolean
   title?: string
   carry?: React.ReactNode
+  showFooter?: boolean
 }): React.ReactElement {
   const done = agent.phase === 'done'
   // Done cards are collapsible (user-toggled); live cards follow the caller's
@@ -391,6 +422,9 @@ export function AgentCard({
   const cardRef = React.useRef<HTMLDivElement>(null)
   const focusNonce = useUiNav((s) => s.focusNonce)
   const focusAgentId = useUiNav((s) => s.focusAgentId)
+  const openDrawer = useUiNav((s) => s.openDrawer)
+  // Run output dir (always set — main passes --output-dir) for "Open run folder".
+  const runDir = useEngineStore((s) => s.config?.sources?.outputDir)
   React.useEffect(() => {
     if (focusAgentId !== agent.id) return
     if (done) setExpanded(true)
@@ -407,36 +441,55 @@ export function AgentCard({
     </span>
   )
   const task = agent.taskDescription ?? agent.dependencyHint
+  // Footer (research agents only, once done with a report): a sibling action
+  // row BELOW the card. Recon probes pass no `showFooter`, so they get none.
+  const report = done && showFooter ? reportItemOf(agent) : null
   return (
-    <div
-      ref={cardRef}
-      className={`card agent ${done ? '' : 'live'} ${showBody ? 'open' : ''}`}
-      style={{ ['--kc' as string]: kc }}
-    >
+    <>
       <div
-        className={`chead ${done ? 'click' : ''}`}
-        onClick={done ? () => setExpanded((e) => !e) : undefined}
+        ref={cardRef}
+        className={`card agent ${done ? '' : 'live'} ${showBody ? 'open' : ''}`}
+        style={{ ['--kc' as string]: kc }}
       >
-        <span className="cbadge">{agent.label}</span>
-        <div className="ctitle">
-          <div className="t">{title ?? `Agent ${(agent.taskIndex ?? colorIdx) + 1}`}</div>
+        <div
+          className={`chead ${done ? 'click' : ''}`}
+          onClick={done ? () => setExpanded((e) => !e) : undefined}
+        >
+          <span className="cbadge">{agent.label}</span>
+          <div className="ctitle">
+            <div className="t">{title ?? `Agent ${(agent.taskIndex ?? colorIdx) + 1}`}</div>
+          </div>
+          {pill}
+          <span className="cstat">
+            <span>{agent.toolCallCount} tools</span>
+            <span>{agent.tokenCount.toLocaleString()} tok</span>
+          </span>
+          {done && <IconChevron className={`chev ${expanded ? 'open' : ''}`} />}
         </div>
-        {pill}
-        <span className="cstat">
-          <span>{agent.toolCallCount} tools</span>
-          <span>{agent.tokenCount.toLocaleString()} tok</span>
-        </span>
-        {done && <IconChevron className={`chev ${expanded ? 'open' : ''}`} />}
+        {task && <div className="ctask">{task}</div>}
+        {showBody && (
+          <div className="cbody">
+            {carry}
+            <WorkRows agent={agent} />
+            <SourceChips agent={agent} />
+          </div>
+        )}
       </div>
-      {task && <div className="ctask">{task}</div>}
-      {showBody && (
-        <div className="cbody">
-          {carry}
-          <WorkRows agent={agent} />
-          <SourceChips agent={agent} />
-        </div>
+      {report && (
+        <AgentFooter
+          title={title ?? `Agent ${(agent.taskIndex ?? colorIdx) + 1}`}
+          markdown={extractReportBody(report.body)}
+          defaultName={`annexure-${(agent.taskIndex ?? colorIdx) + 1}.pdf`}
+          sources={{
+            count: agentSourceRows(agent).length,
+            onOpen: () => openDrawer('sources', agent.id),
+          }}
+          transcript={agentTranscript(agent)}
+          json={report.body}
+          runDir={runDir ?? undefined}
+        />
       )}
-    </div>
+    </>
   )
 }
 
@@ -496,8 +549,11 @@ function stripThink(text: string): string {
   return text.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, '')
 }
 
-/** The Answer beat — the grounded answer document. */
+/** The Answer beat — the grounded answer document. Gets the same footer
+ *  (Copy + Export of the final report); no Sources entry (it aggregates the
+ *  whole run, surfaced by the header ledger). */
 export function AnswerCard({ answer }: { answer: string | null }): React.ReactElement {
+  const runDir = useEngineStore((s) => s.config?.sources?.outputDir)
   if (!answer) {
     return (
       <div className="card acard">
@@ -507,11 +563,15 @@ export function AnswerCard({ answer }: { answer: string | null }): React.ReactEl
       </div>
     )
   }
+  const body = stripThink(answer)
   return (
-    <div className="card">
-      <div className="answer-body md">
-        <Markdown text={stripThink(answer)} />
+    <>
+      <div className="card">
+        <div className="answer-body md">
+          <Markdown text={body} />
+        </div>
       </div>
-    </div>
+      <AgentFooter title="Report" markdown={body} defaultName="report.pdf" runDir={runDir ?? undefined} />
+    </>
   )
 }

@@ -1,20 +1,20 @@
 import React, { useEffect, useState } from 'react'
 import type { Toast as ToastModel } from '../tui-ink/state'
 import { useEngineState } from './bridge'
+import { useUiNav } from './ui-store'
 import { Boot } from './components/Boot'
 import { Composer } from './components/Composer'
+import { Drawer } from './components/Drawer'
 import { Header } from './components/Header'
-import { Settings } from './components/Settings'
+import { ReportView } from './components/ReportView'
+import { SettingsBody } from './components/Settings'
+import { SourcesBody } from './components/Sources'
 import { Timeline } from './components/Timeline'
 
 const BOOT_PHASES = new Set(['boot', 'loading', 'downloading', 'boot_error'])
 
 export function App(): React.ReactElement {
   const state = useEngineState()
-  // Renderer-local: the Settings drawer's open/closed state. Self-contained —
-  // no engine round-trip; the drawer reads engine state but the overlay is a
-  // pure renderer concern.
-  const [settingsOpen, setSettingsOpen] = useState(false)
 
   if (BOOT_PHASES.has(state.uiPhase)) {
     return (
@@ -28,12 +28,59 @@ export function App(): React.ReactElement {
   const fresh = state.uiPhase === 'composer' && !state.query
   return (
     <div className="page">
-      <Header state={state} onOpenSettings={() => setSettingsOpen(true)} />
+      <Header state={state} />
       {fresh ? <Welcome /> : <Timeline state={state} />}
       <Composer state={state} />
       <Toast toast={state.toast} />
-      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      <InspectorDrawer />
     </div>
+  )
+}
+
+/**
+ * The single multi-mode inspector slide-over, driven by `ui-store`:
+ *  · 'settings' — installed AgentApps + Advanced.
+ *  · 'sources'  — the live cross-agent source ledger; `filterAgentId` scopes it
+ *    to one agent (from a card footer's "Sources (N)"). When filtered, a
+ *    "Show all" action drops back to the global ledger.
+ * Keyed by mode+filter so switching modes re-runs the Drawer's focus trap.
+ */
+function InspectorDrawer(): React.ReactElement | null {
+  const drawer = useUiNav((s) => s.drawer)
+  const openDrawer = useUiNav((s) => s.openDrawer)
+  const closeDrawer = useUiNav((s) => s.closeDrawer)
+  if (!drawer) return null
+
+  if (drawer.mode === 'settings') {
+    return (
+      <Drawer key="settings" title="Settings" onClose={closeDrawer}>
+        <SettingsBody />
+      </Drawer>
+    )
+  }
+  if (drawer.mode === 'report' && drawer.report) {
+    return (
+      <Drawer key="report" title={drawer.report.title} onClose={closeDrawer} wide>
+        <ReportView report={drawer.report} />
+      </Drawer>
+    )
+  }
+  const filtered = drawer.filterAgentId != null
+  return (
+    <Drawer
+      key={`sources-${drawer.filterAgentId ?? 'all'}`}
+      title="Sources"
+      onClose={closeDrawer}
+      actions={
+        filtered ? (
+          <button className="drawer-act" onClick={() => openDrawer('sources')}>
+            Show all
+          </button>
+        ) : undefined
+      }
+    >
+      <SourcesBody filterAgentId={drawer.filterAgentId} />
+    </Drawer>
   )
 }
 

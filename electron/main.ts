@@ -206,6 +206,48 @@ app.whenReady().then(() => {
     return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
   })
 
+  // Reveal a local file/folder in Finder/Explorer (source-ledger rows for
+  // corpus-style filesystem sources, and "Open run folder"). The renderer
+  // passes an absolute path it derived from `state.config.sources.outputDir`
+  // or a tool_result host that looks like a path — main just reveals it.
+  ipcMain.handle('engine:reveal-item', (_e, path: unknown): void => {
+    if (typeof path === 'string' && path) shell.showItemInFolder(path)
+  })
+
+  // Export the report preview to a PDF. The renderer hands over a complete,
+  // print-styled HTML document (the rendered report + a light print theme); we
+  // render it in an offscreen window, run the native Save dialog, and write the
+  // PDF via Chromium's printToPDF. Returns the saved path, or null if cancelled.
+  ipcMain.handle(
+    'engine:export-pdf',
+    async (_e, arg: unknown): Promise<string | null> => {
+      if (!win || typeof arg !== 'object' || arg === null) return null
+      const { defaultName, html } = arg as { defaultName?: unknown; html?: unknown }
+      if (typeof html !== 'string') return null
+      const res = await dialog.showSaveDialog(win, {
+        title: 'Export PDF',
+        defaultPath: typeof defaultName === 'string' ? defaultName : 'report.pdf',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      })
+      if (res.canceled || !res.filePath) return null
+      const off = new BrowserWindow({
+        show: false,
+        webPreferences: { offscreen: true, sandbox: true },
+      })
+      try {
+        await off.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+        const pdf = await off.webContents.printToPDF({
+          printBackground: true,
+          margins: { top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 },
+        })
+        writeFileSync(res.filePath, pdf)
+        return res.filePath
+      } finally {
+        off.destroy()
+      }
+    },
+  )
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

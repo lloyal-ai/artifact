@@ -35,6 +35,22 @@ export type UiPhase =
  *  everywhere — no 'chain' alias. */
 export type Mode = 'flat' | 'deep';
 
+/** One cited source, extracted CONSUMER-side from a tool result (the App
+ *  Protocol prescribes no result schema). Web tools populate url/title/snippet
+ *  today; image (og:image) + icon (favicon) arrive once the web app ≥1.2.0
+ *  emits them. App-agnostic — corpus/other apps fill whatever subset applies. */
+export interface SourceMeta {
+  url?: string;
+  title?: string;
+  snippet?: string;
+  /** og:image URL (or a local cache ref once the engine inlines it). */
+  image?: string;
+  /** favicon URL. */
+  icon?: string;
+  /** Display host, derived from url when present. */
+  host?: string;
+}
+
 /** Per-agent chronological stream item. Column.tsx renders one component
  *  per kind. `live: true` on a think item means its body is currently
  *  streaming tokens and should render with a `▎` cursor. */
@@ -65,6 +81,14 @@ export type TimelineItem =
       preview: string | null;
       hosts: string[];
       resultCount: number | null;
+      /** Per-source citation metadata extracted from the tool's (free-form)
+       *  result — the App Protocol prescribes no result schema, so this is a
+       *  CONSUMER-side convention parsed in summarizeResult from known tool
+       *  shapes (web_search/fetch_page already return url+title+snippet;
+       *  fetch_page additionally emits og:image + favicon once web ≥1.2.0).
+       *  Drives the per-page rows in the Sources ledger. Empty/undefined for
+       *  tools that surface no per-source data (grep, corpus search). */
+      sources?: SourceMeta[];
     }
   | {
       kind: 'report';

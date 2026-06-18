@@ -9,7 +9,7 @@
  * returns the view-ready state.
  */
 
-import type { AppState, AgentRuntime, TimelineItem } from './state';
+import type { AppState, AgentRuntime, TimelineItem, SourceMeta } from './state';
 import { initialState } from './state';
 import type { WorkflowEvent } from './events';
 import type { Config } from './config';
@@ -67,26 +67,52 @@ function formatArgSummary(tool: string, rawArgs: string): string {
   return q ? `"${q.length > 48 ? q.slice(0, 48) + '…' : q}"` : '';
 }
 
-/** Best-effort per-tool summary used by the column's ToolResult line. */
+/** Best-effort per-tool summary used by the column's ToolResult line. The
+ *  `sources` field carries per-page citation metadata for the Sources ledger —
+ *  extracted consumer-side from the tool's free-form result (the App Protocol
+ *  prescribes no result schema). web_search/fetch_page already return
+ *  url+title+snippet; image/icon (og:image + favicon) populate once the web app
+ *  ≥1.2.0 emits them. */
 function summarizeResult(tool: string, raw: string): {
   summary: string;
   hosts: string[];
   resultCount: number | null;
   preview: string | null;
+  sources?: SourceMeta[];
 } {
   // Try JSON parse first — structured tools (web_search, search, grep, plan).
   try {
     const parsed: unknown = JSON.parse(raw);
     if (tool === 'web_search' && Array.isArray(parsed)) {
-      const items = parsed as { url?: string; title?: string }[];
+      const items = parsed as {
+        url?: string;
+        title?: string;
+        snippet?: string;
+        image?: string;
+        icon?: string;
+      }[];
       const hosts = Array.from(
         new Set(items.map((i) => (i.url ? hostOf(i.url) : '')).filter(Boolean)),
       ).slice(0, 3);
+      // Per-page citations (url+title+snippet are already returned; image/icon
+      // arrive with web ≥1.2.0). Cap to keep the envelope small.
+      const sources: SourceMeta[] = items
+        .filter((i) => i.url || i.title)
+        .slice(0, 8)
+        .map((i) => ({
+          url: i.url,
+          title: i.title,
+          snippet: i.snippet,
+          image: i.image,
+          icon: i.icon,
+          host: i.url ? hostOf(i.url) : undefined,
+        }));
       return {
         summary: `${items.length} results`,
         hosts,
         resultCount: items.length,
         preview: items[0]?.title ?? null,
+        sources: sources.length ? sources : undefined,
       };
     }
     if (tool === 'search' && Array.isArray(parsed)) {
@@ -107,25 +133,42 @@ function summarizeResult(tool: string, raw: string): {
         preview: null,
       };
     }
-    if (tool === 'fetch_page' && typeof parsed === 'object' && parsed !== null) {
-      const r = parsed as { url?: string; title?: string; error?: string };
+    if (
+      (tool === 'fetch_page' || tool === 'web_fetch') &&
+      typeof parsed === 'object' &&
+      parsed !== null
+    ) {
+      const r = parsed as {
+        url?: string;
+        title?: string;
+        error?: string;
+        excerpt?: string;
+        image?: string;
+        icon?: string;
+      };
       if (r.error) return { summary: r.error, hosts: [], resultCount: null, preview: null };
       const hosts = r.url ? [hostOf(r.url)] : [];
+      // A fetched page is one rich citation: title + excerpt as the snippet,
+      // plus og:image + favicon once the web app emits them (web ≥1.2.0).
+      const sources: SourceMeta[] | undefined =
+        r.url || r.title
+          ? [
+              {
+                url: r.url,
+                title: r.title,
+                snippet: r.excerpt,
+                image: r.image,
+                icon: r.icon,
+                host: r.url ? hostOf(r.url) : undefined,
+              },
+            ]
+          : undefined;
       return {
         summary: `${raw.length}b`,
         hosts,
         resultCount: null,
         preview: r.title ?? null,
-      };
-    }
-    if (tool === 'web_fetch' && typeof parsed === 'object' && parsed !== null) {
-      const r = parsed as { url?: string; title?: string };
-      const hosts = r.url ? [hostOf(r.url)] : [];
-      return {
-        summary: `${raw.length}b`,
-        hosts,
-        resultCount: null,
-        preview: r.title ?? null,
+        sources,
       };
     }
   } catch {
@@ -863,6 +906,7 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
             preview: summary.preview,
             hosts: hostsUnique,
             resultCount: summary.resultCount,
+            sources: summary.sources,
           },
         ),
       );
