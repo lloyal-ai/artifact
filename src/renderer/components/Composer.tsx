@@ -68,7 +68,18 @@ export function Composer({ state }: { state: AppState }): React.ReactElement {
           <IconSend />
         </button>
       </div>
-      <div className="chint">{chint}</div>
+      <div className="chint">
+        {chint}
+        {state.corpusStatus && (
+          <span
+            className="cidx"
+            title={`Local corpus indexed: ${state.corpusStatus.fileCount} files, ${state.corpusStatus.chunkCount} chunks`}
+          >
+            ◆ {state.corpusStatus.fileCount.toLocaleString()} files ·{' '}
+            {state.corpusStatus.chunkCount.toLocaleString()} chunks indexed
+          </span>
+        )}
+      </div>
     </div>
   )
 }
