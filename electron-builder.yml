@@ -10,8 +10,8 @@
 #
 # Native deps are node-addon-api (N-API) prebuilts — no node-gyp — so
 # `npmRebuild: false`. macOS auto-selects the Metal binary (default darwin-arm64).
-appId: ai.lloyal.reasoning-run
-productName: reasoning.run
+appId: ai.lloyal.artifact
+productName: Artifact
 directories:
   output: release
 asar: true
@@ -27,8 +27,9 @@ files:
   - package.json
 mac:
   category: public.app-category.productivity
-  # Local de-risk build: skip code signing (identity null). Real signing/notarize
-  # is a Phase 5 concern for distributable artifacts.
+  icon: build/icon.icns
+  # Local de-risk build: skip code signing (identity null). Real Developer-ID
+  # signing + notarization is the Phase E ship gate (needs Apple creds).
   identity: null
   target:
     - dmg

@@ -49,7 +49,7 @@ export function Composer({ state }: { state: AppState }): React.ReactElement {
       ? 'The planner needs a little more to route this well'
       : (state.mode ?? 'flat') === 'deep'
         ? 'Deep · tasks chain down the spine · each builds on the last'
-        : 'Parallel · agents fan out from the shared context · converge at synthesis'
+        : ''
 
   return (
     <div className="composer">
@@ -80,6 +80,7 @@ export function Composer({ state }: { state: AppState }): React.ReactElement {
           </span>
         )}
       </div>
+      <div className="cnote">AI can make mistakes — check the cited sources.</div>
     </div>
   )
 }

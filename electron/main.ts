@@ -1,7 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess, type UtilityProcess } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'node:path'
 import { totalmem } from 'node:os'
-import { writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from 'node:fs'
+import { writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync, existsSync } from 'node:fs'
 import { reduce } from '../src/tui-ink/reducer'
 import { initialState, type AppState } from '../src/tui-ink/state'
 import type { WorkflowEvent, Command } from '../src/tui-ink/events'
@@ -105,7 +105,7 @@ function spawnEngine(): void {
   // out/main/index.js → <projectRoot>/dist/bundle.mjs (the esbuild engine).
   const enginePath = join(__dirname, '../../dist/bundle.mjs')
   const configPath = join(app.getPath('userData'), 'harness.json')
-  outputDir = join(app.getPath('documents'), 'reasoning.run')
+  outputDir = join(app.getPath('documents'), 'Artifact')
 
   // RR_BRIDGE → harness streams over parentPort instead of mounting Ink.
   // GPU: macOS auto-selects the Metal binary (default darwin-arm64; no LLOYAL_GPU).
@@ -183,13 +183,13 @@ function createWindow(): void {
     minWidth: 920,
     minHeight: 600,
     show: false,
-    backgroundColor: '#0c0e15',
+    backgroundColor: '#080B14',
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     // Native window-controls overlay on win/linux (no-op on mac, which uses the
     // traffic-lights). Tinted to the header so the buttons sit on-aesthetic.
     titleBarOverlay: isMac
       ? undefined
-      : { color: '#0c0e15', symbolColor: '#aeb5c5', height: 36 },
+      : { color: '#03050A', symbolColor: '#aeb5c5', height: 36 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -253,6 +253,15 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Dev-time dock icon: packaged builds get the icon from the signed `.app`
+  // bundle (electron-builder `mac.icon`), but `npm run dev` shows Electron's
+  // default. Set the Artifact mark from build/icon.png when present (dev only —
+  // the file isn't bundled into the packaged app).
+  if (process.platform === 'darwin' && app.dock) {
+    const iconPath = join(__dirname, '../../build/icon.png')
+    if (existsSync(iconPath)) app.dock.setIcon(nativeImage.createFromPath(iconPath))
+  }
+
   spawnEngine()
   createWindow()
 

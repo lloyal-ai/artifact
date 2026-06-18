@@ -146,9 +146,15 @@ export function SourcesBody({ filterAgentId }: { filterAgentId?: number }): Reac
   const rows = collectSources(state, filterAgentId)
 
   if (rows.length === 0) {
+    // During the probe/recon phase the header source count climbs (the probe is
+    // mapping coverage), but the ledger only fills once research agents cite
+    // sources — so set that expectation explicitly instead of reading as empty.
+    const probing = state.phase === 'recon' || state.uiPhase === 'discovering'
     return (
       <div className="srcledger-empty">
-        Sources the agents cite will appear here — each one traceable to the task that found it.
+        {probing
+          ? 'Mapping coverage — sources will appear here once research begins, each traceable to the task that cited it.'
+          : 'Sources the agents cite will appear here — each one traceable to the task that found it.'}
       </div>
     )
   }

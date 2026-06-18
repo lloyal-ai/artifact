@@ -259,9 +259,13 @@ function buildBeats(s: AppState): BeatDef[] {
   )
 
   if (allAgents.length > 0 || (researchActive && s.plan)) {
-    // Planned count — survives agent pruning (live researchAgentIds.length drops
-    // as agents finish, so it would under-count). Fall back to the merged set.
-    const plannedCount = s.plan?.tasks.length ?? allAgents.length
+    // Planned count — prefer the authoritative fork count from `research:start`
+    // (= plan.tasks.length at the harness, captured before the pool spawns). It
+    // survives agent pruning AND a missing/empty renderer-side plan.tasks (which
+    // otherwise rendered "Forked 0" while agents really forked). Fall back to
+    // plan.tasks, then the merged live+finished set.
+    const plannedCount =
+      s.researchAgentCount || s.plan?.tasks.length || allAgents.length
     if (mode === 'flat') {
       // Parallel — a fork beat, then each agent alternating off both sides.
       B.push({

@@ -151,14 +151,24 @@ function ReportRow({
   )
 }
 
-/** Live "Writing report" — the model is streaming the report-tool JSON into
- *  `contentBuffer` (post-</think>, pre-report-item). Collapsed by default;
- *  expanding shows the raw streaming text, monospace + scrollable. */
-function WritingReportRow({ buffer }: { buffer: string }): React.ReactElement {
+/** Live "Writing report" — the model is streaming the report into
+ *  `contentBuffer` (post-</think>, pre-report-item). Two sources feed this:
+ *   · voluntary `report` tool — `contentBuffer` holds the tool-call JSON, so
+ *     decode the `"result":"…"` value out of it (`extractStreamingReport`).
+ *   · recovery (`recoverInline`) — the EAGER report grammar emits raw report
+ *     prose (no JSON envelope), so the buffer IS the report; render it directly.
+ *  Without the recovery branch the prose has no `"result":"` key, so the JSON
+ *  decode returns null and the stream renders invisibly while tokens climb.
+ *  Collapsed by default; expanding shows the live markdown. */
+function WritingReportRow({
+  buffer,
+  recovering,
+}: {
+  buffer: string
+  recovering: boolean
+}): React.ReactElement {
   const [open, setOpen] = React.useState(false)
-  // Decode the streaming report JSON so it reads as markdown, not escaped JSON.
-  // Falls back to the raw buffer until the `"result":"…"` value appears.
-  const report = extractStreamingReport(buffer)
+  const report = recovering ? buffer : extractStreamingReport(buffer)
   return (
     <div className="wrow live">
       <span className="wic">
@@ -235,15 +245,29 @@ export function WorkRows({ agent }: { agent: AgentRuntime }): React.ReactElement
     // standalone tool_result (no matching call) is not a work row.
   }
 
-  // Live report writing — the model is streaming report-tool JSON before the
-  // structured report item lands. The `content` phase streams the JSON of
-  // EVERY tool call (search/read args too), not just the terminal report, so
-  // gate on the report shape: `extractStreamingReport` returns non-null only
-  // once the buffer carries the report tool's `"result":"…"` value. Without
-  // this gate, every search/read call briefly flashed a mislabeled "Writing
-  // report" row before its `agent:tool_call` event landed and replaced it.
-  if (agent.contentBuffer.trim() && extractStreamingReport(agent.contentBuffer) !== null) {
-    rows.push(<WritingReportRow buffer={agent.contentBuffer} key="writing-report" />)
+  // Live report writing — the model is streaming the report before the
+  // structured report item lands. Two cases:
+  //  · recovery (`agent.recovering`): `recoverInline`'s EAGER report grammar
+  //    streams raw report prose into contentBuffer. This is the COMMON path
+  //    (the model rarely calls the report tool voluntarily), so it MUST render
+  //    or the answer streams invisibly behind a climbing token count.
+  //  · voluntary report: the `content` phase streams the JSON of EVERY tool
+  //    call (search/read args too), not just the terminal report — so gate on
+  //    the report shape (`extractStreamingReport` non-null only once the
+  //    buffer carries the report tool's `"result":"…"` value). Without that
+  //    gate every search/read call briefly flashed a mislabeled "Writing
+  //    report" row. Recovery is never the `content` phase, so it can't reintroduce that flash.
+  if (
+    agent.contentBuffer.trim() &&
+    (agent.recovering || extractStreamingReport(agent.contentBuffer) !== null)
+  ) {
+    rows.push(
+      <WritingReportRow
+        buffer={agent.contentBuffer}
+        recovering={agent.recovering}
+        key="writing-report"
+      />,
+    )
   }
 
   return <div className="work">{rows}</div>

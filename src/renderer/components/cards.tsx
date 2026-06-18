@@ -85,8 +85,9 @@ function useNow(active: boolean): number {
   return now
 }
 
-/** Compact elapsed: "8s", "45s", "2m 10s". */
+/** Compact elapsed: "8s", "45s", "2m 10s". Empty for a non-finite input. */
 function fmtElapsed(ms: number): string {
+  if (!Number.isFinite(ms)) return ''
   const s = Math.max(0, Math.round(ms / 1000))
   if (s < 60) return `${s}s`
   return `${Math.floor(s / 60)}m ${s % 60}s`
@@ -138,9 +139,12 @@ function PlanStatusRow({
   const focusAgent = useUiNav((s) => s.focusAgent)
   const clickable = agent !== null
   // Per-task elapsed: ticks live while running/paused, freezes at endedAt once done.
+  // Guard against a non-finite startedAt (e.g. a snapshot-seeded agent that
+  // predates the field) so the timer degrades to nothing rather than "NaN".
   const running = status === 'running' || status === 'paused'
   const now = useNow(running)
-  const elapsed = agent ? (agent.endedAt ?? now) - agent.startedAt : null
+  const elapsed =
+    agent && Number.isFinite(agent.startedAt) ? (agent.endedAt ?? now) - agent.startedAt : null
   return (
     <div
       className={`prow status ${clickable ? 'nav' : ''}`}

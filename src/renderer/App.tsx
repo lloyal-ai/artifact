@@ -129,23 +129,83 @@ function Toast({ toast }: { toast: ToastModel | null }): React.ReactElement | nu
   )
 }
 
+/** Up-arrow — "data leaving the device" cue; mirrors Header's IconEgress so the
+ *  legend's Network pill matches the live one in the toolbar exactly. */
+const IconEgress = (): React.ReactElement => (
+  <svg
+    className="egr-ic"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2.2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 19V6M6 12l6-6 6 6" />
+  </svg>
+)
+
 function Welcome(): React.ReactElement {
   return (
     <div className="scroll">
-      <div style={{ maxWidth: 720, margin: '14vh auto 0', textAlign: 'center' }}>
-        <div
-          style={{
-            fontSize: 28,
-            fontWeight: 600,
-            letterSpacing: '-0.02em',
-            lineHeight: 1.3,
-          }}
-        >
-          What do you want to understand?
+      <div className="welcome">
+        <div className="welcome-h">What do you want to understand?</div>
+        <div className="welcome-sub">
+          A private AI workspace for research, reasoning, and source-backed work.
         </div>
-        <div style={{ color: 'var(--ink-3)', marginTop: 14, fontSize: 15 }}>
-          Ask directly for a fast answer, or pose a research question and watch the run unfold as a
-          timeline — every task, every source, fully local.
+
+        {/* Transparency card — styled like the agent/spine cards. Lists every
+            entitlement an app can hold. Live ones (Local, Network) describe the
+            top-bar pill the user will see; the rest are declared per-app and
+            surfaced in Settings, not the live bar. Pills are non-interactive. */}
+        <div className="card welcome-card">
+          <div className="wlegend">
+            <div className="wlegend-cap">How Artifact’s AI transparency works:</div>
+
+            <div className="wl-pill">
+              <span className="localdot">
+                <span className="orb" />
+                <b>Local</b>
+              </span>
+            </div>
+            <div className="wl-desc">
+              Inference runs on your device by default — the baseline everything below is measured
+              against.
+            </div>
+
+            <div className="wl-pill">
+              <span className="egress">
+                <IconEgress />
+                <b>Network</b>
+              </span>
+            </div>
+            <div className="wl-desc">
+              Lights up in the top status bar while a reviewed app reaches the internet — so you see
+              the moment data leaves your device.
+            </div>
+
+            <div className="wl-pill">
+              <span className="entpill">
+                <span className="dot files" />
+                <b>Local files</b>
+              </span>
+            </div>
+            <div className="wl-desc">
+              Lets an app read files on your device. Doesn’t live in the top status bar — check which
+              app uses it in Settings.
+            </div>
+
+            <div className="wl-pill">
+              <span className="entpill">
+                <span className="dot creds" />
+                <b>Credentials</b>
+              </span>
+            </div>
+            <div className="wl-desc">
+              Lets an app use API keys you’ve stored. Doesn’t live in the top status bar — check which
+              app uses it in Settings.
+            </div>
+          </div>
         </div>
       </div>
     </div>

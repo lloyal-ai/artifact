@@ -415,6 +415,11 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
         uiPhase: 'research',
         phase: 'research',
         mode: ev.mode === 'flat' ? 'flat' : 'deep',
+        // Authoritative fork count — the harness derives it from plan.tasks.length
+        // BEFORE the pool spawns. Stored so "Forked N agents" is right even when
+        // the renderer's plan.tasks is empty/late (the old `?? plan.tasks.length`
+        // path rendered "Forked 0" while agents really forked).
+        researchAgentCount: ev.agentCount,
         pipelineResumedAt: Date.now(),
       };
 

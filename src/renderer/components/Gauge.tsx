@@ -1,9 +1,11 @@
 import React from 'react'
 
 /**
- * Semicircular needle gauge for context-window (KV) pressure.
- * Ported from design/research-timeline.html `gaugeSVG`. Green 0–60,
- * amber 60–85, red 85–100; the needle points at `pct`.
+ * Semicircular needle gauge for context-window (KV) pressure — the live face of
+ * the continuous-context moat: ONE shared `llama_context`, branches are seq_ids,
+ * the needle climbs as the shared KV fills. Analog instrument-cluster dial on
+ * purpose. Zone colours follow the meaning system: teal 0–60 (healthy/local),
+ * amber 60–85 (filling — caution), red 85–100 (near the window limit).
  */
 export function Gauge({ pct }: { pct: number }): React.ReactElement {
   const cx = 52, cy = 48, r = 38
@@ -26,14 +28,17 @@ export function Gauge({ pct }: { pct: number }): React.ReactElement {
     <div className="gaugewrap" title="Context-window pressure (continuous-context KV)">
       <svg width="118" height="64" viewBox="0 0 104 56">
         <path d={arc(0, 100, r)} fill="none" stroke="var(--bg-3)" strokeWidth={6} strokeLinecap="round" />
-        <path d={arc(0, 60, r)} fill="none" stroke="rgba(52,211,153,.7)" strokeWidth={6} strokeLinecap="round" />
+        <path d={arc(0, 60, r)} fill="none" stroke="var(--accent)" strokeWidth={6} strokeLinecap="round" />
         <path d={arc(60, 85, r)} fill="none" stroke="var(--warn)" strokeWidth={6} />
         <path d={arc(85, 100, r)} fill="none" stroke="var(--hot)" strokeWidth={6} strokeLinecap="round" />
         {ticks}
         <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" />
         <circle cx={cx} cy={cy} r={3.2} fill="var(--ink)" />
+        <text className="gnum" x={cx} y={34} textAnchor="middle" dominantBaseline="central">
+          {Math.round(p)}%
+        </text>
       </svg>
-      <div className="lab">context <b>{Math.round(p)}%</b></div>
+      <div className="lab">context</div>
     </div>
   )
 }

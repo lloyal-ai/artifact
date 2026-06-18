@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Artifact — palette mock (teal-runtime)</title>
+<style>
+/* ============================================================
+   Artifact — palette exploration: monochrome mark + electric-teal
+   runtime accent. Teal = live / verified / local intelligence (NOT
+   decoration). Blue = sources/context. Amber = data leaving device.
+   Red = blocked/revoked. Greys carry everything else.
+   ============================================================ */
+:root{
+  /* surfaces */
+  --icon-black:#03050A; --bg:#080B14; --surface:#0D1220; --raised:#141A29; --line:#212a3d; --line-2:#2c3650;
+  /* text */
+  --ink:#F7F8FA; --ink-2:#C2C9D6; --ink-3:#9AA3B2; --ink-4:#5b6577;
+  /* MEANING system */
+  --teal:#14F5C7;  --teal-soft:#33FFD6;  --teal-bg:rgba(20,245,199,.10); --teal-line:rgba(20,245,199,.30);
+  --blue:#2563FF;  --blue-soft:#5b8bff;  --blue-bg:rgba(37,99,255,.12);
+  --amber:#FFB020; --amber-bg:rgba(255,176,32,.12);
+  --red:#FF3B5C;   --red-bg:rgba(255,59,92,.12);
+  /* agent identity (desaturated so teal stays "the" live color) */
+  --ag1:#14F5C7; --ag2:#5b8bff; --ag3:#a78bfa; --ag4:#fb7185; --ag5:#fbbf24;
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);color:var(--ink);font-size:15px;line-height:1.5;
+  background:
+    radial-gradient(1200px 700px at 50% -10%, rgba(20,245,199,.07), transparent 60%),
+    radial-gradient(900px 600px at 88% 8%, rgba(37,99,255,.06), transparent 60%),
+    linear-gradient(180deg,#080B14,#04060d 70%);
+  -webkit-font-smoothing:antialiased;min-height:100vh;padding:40px 32px 80px;}
+.wrap{max-width:1120px;margin:0 auto}
+h1{font-size:26px;letter-spacing:-.02em;margin:0 0 4px;font-weight:700}
+.lede{color:var(--ink-3);font-size:14.5px;max-width:760px;margin:0 0 4px}
+.sec{margin-top:46px}
+.sec-h{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);font-weight:700;margin:0 0 16px}
+.row{display:flex;gap:18px;flex-wrap:wrap}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px}
+.muted{color:var(--ink-3)}
+
+/* ── hero: the mark ── */
+.hero{display:flex;gap:34px;align-items:center;flex-wrap:wrap}
+.markbox{position:relative;padding:34px;border-radius:28px;background:radial-gradient(120px 120px at 50% 45%, rgba(20,245,199,.16), transparent 70%)}
+.mark{width:132px;height:132px;border-radius:30px;background:var(--icon-black);
+  box-shadow:0 0 0 1px rgba(255,255,255,.06), 0 0 60px rgba(20,245,199,.28), 0 24px 60px rgba(0,0,0,.6);
+  display:grid;place-items:center}
+.mark img{width:100%;height:100%;border-radius:30px;display:block}
+.mark-cap{margin-top:14px;text-align:center;font-size:12px;color:var(--ink-4)}
+.hero-copy h2{margin:0 0 6px;font-size:22px;letter-spacing:-.02em}
+.hero-copy .pos{color:var(--ink-2);max-width:520px;margin:0 0 16px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--ink-2);
+  background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:6px 11px}
+.chip .dot{width:7px;height:7px;border-radius:50%}
+.chip.verify{border-color:var(--teal-line);color:var(--teal-soft);background:var(--teal-bg)}
+.chip.verify .dot{background:var(--teal);box-shadow:0 0 8px var(--teal)}
+
+/* ── swatches ── */
+.swgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px}
+.sw{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:var(--surface)}
+.sw .chip-fill{height:62px}
+.sw .meta{padding:10px 12px}
+.sw .nm{font-size:13px;font-weight:600}
+.sw .hex{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.sw .use{font-size:11px;color:var(--ink-4);margin-top:3px}
+
+/* ── meaning legend ── */
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.lg{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:14px}
+.lg .key{width:12px;height:12px;border-radius:4px;margin-top:3px;flex:none}
+.lg b{font-size:14px}
+.lg p{margin:2px 0 0;font-size:12.5px;color:var(--ink-3)}
+
+/* ── app frame ── */
+.frame{background:var(--bg);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.titlebar{height:34px;background:var(--icon-black);display:flex;align-items:center;justify-content:center;position:relative;border-bottom:1px solid var(--line)}
+.traffic{position:absolute;left:13px;display:flex;gap:8px}
+.traffic i{width:11px;height:11px;border-radius:50%}
+.traffic i:nth-child(1){background:#ff5f57}.traffic i:nth-child(2){background:#febc2e}.traffic i:nth-child(3){background:#28c840}
+.appname{font-size:12.5px;font-weight:700;letter-spacing:.02em;color:var(--ink-2)}
+.toolbar{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+.brand{width:30px;height:30px;border-radius:9px;background:var(--icon-black);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,255,255,.05),0 0 14px rgba(20,245,199,.25)}
+.brand img{width:100%;height:100%;border-radius:9px;display:block}
+.crumb{font-weight:600;color:var(--ink-2);font-size:14px}
+.spacer{flex:1}
+.localdot{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--teal-soft);padding:5px 11px;border-radius:999px;
+  border:1px solid var(--teal-line);background:linear-gradient(180deg,var(--teal-bg),transparent)}
+.localdot .orb{width:8px;height:8px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 3px var(--teal-bg),0 0 10px var(--teal)}
+.stat{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3);background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:5px 10px}
+.stat b{color:var(--ink)}
+.modesw{display:flex;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:3px}
+.modesw button{font:inherit;font-size:12.5px;color:var(--ink-3);background:none;border:0;padding:5px 12px;border-radius:7px;cursor:pointer}
+.modesw button.on{background:var(--teal-bg);color:var(--teal-soft);box-shadow:inset 0 0 0 1px var(--teal-line)}
+
+/* ── timeline ── */
+.canvas{position:relative;padding:26px 26px 30px;min-height:120px}
+.spine{position:absolute;left:50%;top:14px;bottom:14px;width:3px;transform:translateX(-50%);background:var(--line);border-radius:3px}
+.spine-fill{position:absolute;left:50%;top:14px;width:3px;height:58%;transform:translateX(-50%);border-radius:3px;
+  background:linear-gradient(180deg,var(--teal),var(--blue));box-shadow:0 0 16px rgba(20,245,199,.45)}
+.beat{position:relative;display:flex;margin:14px 0}
+.beat.left{justify-content:flex-start}.beat.right{justify-content:flex-end}.beat.center{justify-content:center}
+.knot{position:absolute;left:50%;top:18px;width:13px;height:13px;border-radius:50%;transform:translate(-50%,-50%);border:2px solid var(--bg);z-index:2}
+.acard{width:46%;background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:13px 14px}
+.acard.live{border-color:var(--line);box-shadow:0 0 30px rgba(20,245,199,.06)}
+.acard .ah{display:flex;align-items:center;gap:9px}
+.badge{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:800;color:#02120e}
+.atitle{font-size:13.5px;font-weight:600;flex:1}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;display:inline-flex;gap:6px;align-items:center}
+.pill.live{background:var(--teal-bg);color:var(--teal-soft);border:1px solid var(--teal-line)}
+.pill.live .ld{width:6px;height:6px;border-radius:50%;background:var(--teal);box-shadow:0 0 7px var(--teal);animation:pulse 1.6s infinite}
+.pill.done{background:rgba(255,255,255,.05);color:var(--ink-2);border:1px solid var(--line)}
+@keyframes pulse{50%{opacity:.4}}
+.atask{font-size:12px;color:var(--ink-3);margin-top:8px;line-height:1.45}
+.meta{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:11px;color:var(--ink-4)}
+.srcchip{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-2);background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.srcchip .d{width:6px;height:6px;border-radius:50%}
+.center .se{background:var(--icon-black);border:1px solid var(--line);border-radius:12px;padding:10px 18px;text-align:center;box-shadow:0 0 26px rgba(20,245,199,.06)}
+.center .se .t{font-size:13px;font-weight:700}
+.center .se .s{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+
+/* ── permission ribbon ── */
+.perm{display:flex;align-items:center;gap:12px;background:var(--icon-black);border:1px solid var(--line);border-top:0;padding:11px 18px;font-size:12.5px}
+.perm .lead{display:flex;align-items:center;gap:8px;color:var(--teal-soft);font-weight:600}
+.perm .lead .orb{width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 8px var(--teal)}
+.perm .item{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2);background:var(--raised);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+.perm .item.caution{border-color:rgba(255,176,32,.35);color:var(--amber)}
+.perm .item .ic{width:13px;height:13px}
+
+/* ── buttons ── */
+.btnrow{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-size:13.5px;font-weight:600;border-radius:11px;padding:10px 16px;border:1px solid var(--line);background:var(--raised);color:var(--ink-2);cursor:pointer}
+.btn.primary{background:var(--teal);color:#02120e;border-color:transparent;box-shadow:0 6px 20px rgba(20,245,199,.25)}
+.btn.ghost:hover{border-color:var(--teal-line);color:var(--teal-soft)}
+.btn.danger{color:var(--red);border-color:var(--red-bg);background:var(--red-bg)}
+input.demo{font:inherit;font-size:13.5px;background:var(--icon-black);border:1px solid var(--line);border-radius:11px;color:var(--ink);padding:10px 14px;outline:none;min-width:240px}
+input.demo:focus{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-bg)}
+
+/* ── source ledger ── */
+.ledger{display:flex;flex-direction:column;gap:9px;max-width:560px}
+.srow{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.srow .av{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;background:var(--raised);border:1px solid var(--line)}
+.srow .av.web{color:var(--blue)} .srow .av.local{color:var(--teal-soft)}
+.srow .main{min-width:0;flex:1}
+.srow .lab{font-size:13px;font-weight:600;color:var(--ink)}
+.srow .host{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.srow .snip{font-size:12px;color:var(--ink-3);margin-top:5px;line-height:1.4}
+.tag{font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px}
+.tag.cited{background:var(--teal-bg);color:var(--teal-soft)}
+.sec-sub{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-4);margin:4px 0 2px;font-weight:700}
+
+/* ── boot ── */
+.boot{display:grid;place-items:center;padding:46px 20px;background:radial-gradient(420px 240px at 50% 30%, rgba(20,245,199,.08), transparent 70%)}
+.bootcard{text-align:center;width:min(420px,90%)}
+.bootlogo{width:60px;height:60px;border-radius:17px;margin:0 auto 18px;background:var(--icon-black);display:grid;place-items:center;
+  box-shadow:0 0 0 1px rgba(255,255,255,.06),0 0 40px rgba(20,245,199,.3)}
+.bootlogo img{width:100%;height:100%;border-radius:17px;display:block}
+.bootcard h3{margin:0 0 5px;font-size:20px;letter-spacing:-.02em}
+.bootcard .sub{color:var(--ink-3);font-size:13px;margin-bottom:22px}
+.dlrow{display:flex;align-items:center;gap:11px;margin:9px 0;font-size:12px}
+.dlrow .nm{color:var(--ink-2);width:120px;text-align:left}
+.dlbar{flex:1;height:6px;border-radius:999px;background:var(--raised);overflow:hidden}
+.dlbar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--ink-2),#fff)}
+.bootspin{display:inline-block;width:15px;height:15px;border:2px solid var(--line-2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.note{font-size:12.5px;color:var(--ink-4);margin-top:8px}
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:860px){.twocol{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Artifact — palette mock</h1>
+  <p class="lede">Monochrome mark + an <b style="color:var(--teal-soft)">electric-teal runtime accent</b>. Teal is reserved for live / verified / local intelligence — not decoration. Greys carry structure; blue means sources & context; amber means data leaving the device; red means blocked or revoked.</p>
+
+  <!-- ===== HERO ===== -->
+  <div class="sec hero">
+    <div class="markbox">
+      <div class="mark"><img src="logo.png" alt="Artifact" /></div>
+      <div class="mark-cap">canonical mark · black + white only</div>
+    </div>
+    <div class="hero-copy">
+      <h2>Artifact</h2>
+      <p class="pos">A private AI workspace for research, reasoning, and source-backed work. Runs local agents on your device, uses reviewed AgentApps, and shows permissions while they are active.</p>
+      <div class="chips">
+        <span class="chip verify"><span class="dot"></span>Verified App</span>
+        <span class="chip"><span class="dot" style="background:var(--teal)"></span>Local by default</span>
+        <span class="chip"><span class="dot" style="background:var(--amber)"></span>Visible permissions</span>
+        <span class="chip"><span class="dot" style="background:var(--blue)"></span>Inspectable sources</span>
+        <span class="chip"><span class="dot" style="background:var(--ink-3)"></span>Runs reviewed AgentApps</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MEANING ===== -->
+  <div class="sec">
+    <div class="sec-h">The meaning system — color carries trust state, not decoration</div>
+    <div class="legend">
+      <div class="lg"><span class="key" style="background:var(--teal)"></span><div><b style="color:var(--teal-soft)">Teal</b><p>Local, verified, active, safe. Live agent spine, runtime status, permission-active, primary action, focus.</p></div></div>
+      <div class="lg"><span class="key" style="background:var(--blue)"></span><div><b style="color:var(--blue-soft)">Blue</b><p>Sources, research, context — web pages and retrieved documents in the ledger.</p></div></div>
+      <div class="lg"><span class="key" style="background:var(--amber)"></span><div><b style="color:var(--amber)">Amber</b><p>External / data leaving the device — a web-research permission that's active.</p></div></div>
+      <div class="lg"><span class="key" style="background:var(--red)"></span><div><b style="color:var(--red)">Red</b><p>Blocked, revoked, unsafe — a denied tool call or a revoked permission.</p></div></div>
+    </div>
+  </div>
+
+  <!-- ===== SWATCHES ===== -->
+  <div class="sec">
+    <div class="sec-h">Tokens</div>
+    <div class="swgrid" id="swgrid"></div>
+  </div>
+
+  <!-- ===== APP FRAME (header + timeline + permission ribbon) ===== -->
+  <div class="sec">
+    <div class="sec-h">In context — run timeline</div>
+    <div class="frame">
+      <div class="titlebar"><span class="traffic"><i></i><i></i><i></i></span><span class="appname">Artifact</span></div>
+      <div class="toolbar">
+        <div class="brand"><img src="logo.png" alt="" /></div>
+        <span class="crumb">Define “continuous context” vs competitor frameworks</span>
+        <span class="spacer"></span>
+        <div class="modesw"><button class="on">Parallel</button><button>Deep</button></div>
+        <span class="localdot"><span class="orb"></span><b>Local</b></span>
+        <span class="stat"><b>18</b> sources</span>
+      </div>
+
+      <div class="canvas">
+        <div class="spine"></div><div class="spine-fill"></div>
+
+        <div class="beat center"><span class="knot" style="background:var(--teal)"></span>
+          <div class="se"><div class="t">Forked 2 agents with shared context</div><div class="s">prefix-shared once · each researches its angle · converges at synthesis</div></div>
+        </div>
+
+        <div class="beat left"><span class="knot" style="background:var(--teal)"></span>
+          <div class="acard live">
+            <div class="ah"><span class="badge" style="background:var(--teal)">A</span><span class="atitle">Agent 1</span>
+              <span class="pill live"><span class="ld"></span>writing</span></div>
+            <div class="atask">Survey local HDK documentation to define the mechanism of “continuous context”.</div>
+            <div class="meta"><span class="srcchip"><span class="d" style="background:var(--teal-soft)"></span>corpus_research</span><span style="margin-left:auto">14s · 6 tools</span></div>
+          </div>
+        </div>
+
+        <div class="beat right"><span class="knot" style="background:var(--ag2)"></span>
+          <div class="acard">
+            <div class="ah"><span class="badge" style="background:var(--ag2)">A</span><span class="atitle">Agent 2</span>
+              <span class="pill done">✓ Report ready</span></div>
+            <div class="atask">Survey competitor frameworks (LangChain, AutoGen, CrewAI) for shared-KV continuous context.</div>
+            <div class="meta"><span class="srcchip"><span class="d" style="background:var(--ag2)"></span>web_research</span><span style="margin-left:auto">38s · 11 tools</span></div>
+          </div>
+        </div>
+
+        <div class="beat center"><span class="knot" style="background:var(--line-2)"></span>
+          <div class="se" style="border-color:var(--line);box-shadow:none"><div class="t" style="color:var(--ink-3)">Synthesis</div><div class="s">aggregates the fan into one grounded answer</div></div>
+        </div>
+      </div>
+
+      <!-- live permission ribbon: "shows permissions while they are active" -->
+      <div class="perm">
+        <span class="lead"><span class="orb"></span>Permissions active</span>
+        <span class="item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h7l5 5v13H7z"/></svg>Local files · corpus</span>
+        <span class="item caution"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.4 2.5 2.4 15.5 0 18"/></svg>Internet · web research</span>
+        <span class="spacer" style="flex:1"></span>
+        <span class="item" style="border-color:var(--red-bg);color:var(--red)">1 tool blocked</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONTROLS + LEDGER ===== -->
+  <div class="sec twocol">
+    <div>
+      <div class="sec-h">Actions & inputs</div>
+      <div class="card">
+        <div class="btnrow" style="margin-bottom:16px">
+          <button class="btn primary">Start research</button>
+          <button class="btn ghost">Re-plan</button>
+          <button class="btn">Switch to Deep</button>
+          <button class="btn danger">Revoke access</button>
+        </div>
+        <input class="demo" placeholder="Ask directly, or pose a research question…" />
+        <p class="note">Primary action + focus ring = teal (live intent). Destructive = red. Everything neutral stays graphite.</p>
+      </div>
+    </div>
+    <div>
+      <div class="sec-h">Source ledger</div>
+      <div class="ledger">
+        <div class="sec-sub">Featured</div>
+        <div class="srow"><span class="av local"><svg viewBox="0 0 24 24" width="16" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M7 3h7l5 5v13H7z" stroke-linejoin="round"/></svg></span>
+          <div class="main"><div class="lab">continuous-context.md <span class="tag cited">Cited</span></div><div class="host">hdk-docs · §KV spine</div><div class="snip">One shared llama_context; branches are seq_ids; bin-packed batched decode…</div></div></div>
+        <div class="srow"><span class="av web"><svg viewBox="0 0 24 24" width="16" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg></span>
+          <div class="main"><div class="lab">LangChain — Memory <span class="tag cited">Cited</span></div><div class="host">python.langchain.com</div><div class="snip">Conversation memory is serialized text replayed into the prompt; no shared KV…</div></div></div>
+        <div class="sec-sub" style="margin-top:8px">Surveyed</div>
+        <div class="srow"><span class="av web"><svg viewBox="0 0 24 24" width="16" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg></span>
+          <div class="main"><div class="lab">AutoGen multi-agent</div><div class="host">microsoft.github.io</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== BOOT ===== -->
+  <div class="sec">
+    <div class="sec-h">Boot — no model names, white-on-black progress, teal launch glow</div>
+    <div class="frame">
+      <div class="titlebar"><span class="traffic"><i></i><i></i><i></i></span><span class="appname">Artifact</span></div>
+      <div class="boot">
+        <div class="bootcard">
+          <div class="bootlogo"><img src="logo.png" alt="" /></div>
+          <h3>Artifact</h3>
+          <div class="sub">Fetching local models — one time only</div>
+          <div class="dlrow"><span class="nm">Loading model</span><span class="dlbar"><i style="width:64%"></i></span><span class="muted">1.7/2.6 GB</span></div>
+          <div class="dlrow"><span class="nm">Loading reranker</span><span class="dlbar"><i style="width:90%"></i></span><span class="muted">0.57/0.63 GB</span></div>
+          <p class="note"><span class="bootspin"></span>Local by default · nothing leaves your device</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:34px">Mock only — colors are exploratory. The mark is the real <code>logo.png</code> asset. Agent-identity hues (badges/knots) stay multi-color so parallel agents read apart; teal is held for live/verified runtime state.</p>
+</div>
+
+<script>
+const tokens = [
+  ['--icon-black','Icon black','#03050A','app icon · titlebar · deepest'],
+  ['--bg','Background','#080B14','window canvas'],
+  ['--surface','Surface','#0D1220','cards'],
+  ['--raised','Raised','#141A29','chips · inputs'],
+  ['--ink','Primary text','#F7F8FA',''],
+  ['--ink-3','Secondary text','#9AA3B2',''],
+  ['--teal','Teal — runtime','#14F5C7','live · verified · local'],
+  ['--teal-soft','Teal soft','#33FFD6','hover · accent ink'],
+  ['--blue','Blue — sources','#2563FF','research · context'],
+  ['--amber','Amber — caution','#FFB020','data leaving device'],
+  ['--red','Red — blocked','#FF3B5C','revoked · unsafe'],
+];
+const g = document.getElementById('swgrid');
+for(const [v,nm,hex,use] of tokens){
+  const el=document.createElement('div'); el.className='sw';
+  el.innerHTML=`<div class="chip-fill" style="background:${hex}"></div><div class="meta"><div class="nm">${nm}</div><div class="hex">${hex}</div>${use?`<div class="use">${use}</div>`:''}</div>`;
+  g.appendChild(el);
+}
+</script>
+</body>
+</html>

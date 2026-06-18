@@ -1,6 +1,63 @@
 import React from 'react'
-import type { AppState } from '../../tui-ink/state'
+import type { AppState, DownloadStatus } from '../../tui-ink/state'
 import { dispatch } from '../bridge'
+import logoUrl from '../assets/logo.png'
+
+/** Adaptive byte formatter (GB/MB/KB), matching the TUI BootStatus. */
+function fmtBytes(n: number): string {
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB'
+  if (n >= 1e6) return (n / 1e6).toFixed(0) + ' MB'
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + ' KB'
+  return `${n} B`
+}
+
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host
+  } catch {
+    return null
+  }
+}
+
+/**
+ * One model download. Three states, mirroring the TUI `BootStatus`:
+ *   · done   — ✓ + total bytes
+ *   · active — ● + bar + % + got/total + serving HOST (which mirror; also
+ *              proves bytes are flowing). `started` alone isn't enough — there's
+ *              a window between download:start and the first download:progress
+ *              where no `url` yet; gate `active` on a host so a stalled mirror
+ *              switch (HF → R2) stays legible instead of reading as a freeze.
+ *   · queued — ○ dim + "queued · total"  (download:plan lists both up front)
+ * Role label only — no gguf model names (Artifact divergence).
+ */
+function DownloadLine({ d }: { d: DownloadStatus }): React.ReactElement {
+  const role = d.id.includes('reranker') ? 'Loading reranker' : 'Loading model'
+  const host = d.url ? hostOf(d.url) : null
+  const active = d.started && host !== null && !d.done
+  const state = d.done ? 'done' : active ? 'active' : 'queued'
+  const pct = d.total > 0 ? Math.min(100, Math.floor((d.got / d.total) * 100)) : 0
+  return (
+    <div className={`dlrow ${state}`}>
+      <span className="dlglyph">{d.done ? '✓' : active ? '●' : '○'}</span>
+      <span className="nm">{role}</span>
+      {d.done ? (
+        <span className="pct">{fmtBytes(d.got)}</span>
+      ) : active ? (
+        <>
+          <span className="dlbar">
+            <i style={{ width: `${pct}%` }} />
+          </span>
+          <span className="pct">
+            {pct}% · {fmtBytes(d.got)} / {fmtBytes(d.total)}
+            {host && <span className="dlhost"> · {host}</span>}
+          </span>
+        </>
+      ) : (
+        <span className="pct">queued · {fmtBytes(d.total)}</span>
+      )}
+    </div>
+  )
+}
 
 /**
  * Boot-error recovery: a `.gguf` path field that dispatches the existing
@@ -47,39 +104,28 @@ export function Boot({ state }: { state: AppState }): React.ReactElement {
   return (
     <div className="boot">
       <div className="bootcard">
-        <div className="logo">R</div>
-        <h1>reasoning.run</h1>
+        <img className="logo" src={logoUrl} alt="Artifact" />
+        <h1>Artifact</h1>
         <div className="sub">
           {err
             ? 'Boot failed — recover below'
             : downloads.length > 0
               ? 'Fetching local models — one time only'
-              : state.loadingLabel ?? 'Starting the local engine…'}
+              : 'Starting the local engine…'}
         </div>
 
         {!err && downloads.length > 0 && (
           <div>
-            {downloads.map((d) => {
-              const pct = d.total > 0 ? Math.round((100 * d.got) / d.total) : 0
-              return (
-                <div className="dlrow" key={d.id}>
-                  <span className="nm">{d.label}</span>
-                  <span className="dlbar">
-                    <i style={{ width: `${pct}%` }} />
-                  </span>
-                  <span className="pct">
-                    {(d.got / 1e9).toFixed(2)}/{(d.total / 1e9).toFixed(2)} GB
-                  </span>
-                </div>
-              )
-            })}
+            {downloads.map((d) => (
+              <DownloadLine d={d} key={d.id} />
+            ))}
           </div>
         )}
 
         {!err && downloads.length === 0 && (
           <div style={{ color: 'var(--ink-3)', fontSize: 14 }}>
             <span className="bootspin" />
-            {state.loadingLabel ?? 'Loading…'}
+            Loading…
           </div>
         )}
 

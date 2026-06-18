@@ -1,12 +1,8 @@
-# reasoning.run
+# Artifact
 
-A private reasoner for your terminal. Direct conversation or grounded multi-agent research, GPU-native and fully local. No API keys, no inference servers. Open source (MIT).
+A private AI workspace for research, reasoning, and source-backed work. Local agents run on your device, reviewed AgentApps add capabilities like web research and document search, and permissions stay visible while they are active. GPU-native and fully local — no API keys, no inference servers.
 
-```
-npx reasoning.run
-```
-
-Then type a research question.
+> **Proprietary — © 2026 Lloyal AI. All rights reserved.** Private & confidential; not for redistribution. See `LICENSE`.
 
 <p>
   <img src="assets/demo-readme.gif" alt="reasoning.run: clarifying questions → plan approval → 5 research agents in parallel → synthesized report" width="100%">
@@ -138,10 +134,10 @@ reasoning.run is a working harness on [Lloyal's **Harness Development Kit**](htt
 - **Bring your own data — build an AgentApp.** Wrap a vector DB, REST API, JIRA, or any domain surface as an AgentApp and `registry.enable` it; the harness code doesn't change. See [Build an AgentApp](https://docs.lloyal.ai/build-an-app/what-is-an-app).
 - **`@lloyal-labs/lloyal.node`** — llama.cpp Node binding for in-process inference.
 
-reasoning.run is open source (MIT) — the whole harness, boot to TUI to research loop, is here to read and fork. If you want to build something similar — a local research tool, a domain-specific agent, an in-app assistant — read the [HDK docs](https://docs.lloyal.ai/) and start with `useAgent`.
+Artifact is a proprietary product built on Lloyal's HDK. If you want to build something similar — a local research tool, a domain-specific agent, an in-app assistant — read the [HDK docs](https://docs.lloyal.ai/) and start with `useAgent`.
 
 UI is [Ink](https://github.com/vadimdemedes/ink) (React for terminals).
 
 ## License
 
-MIT © 2026 Lloyal AI. See `LICENSE`. reasoning.run is open source — fork it, study it, ship your own. Its dependencies keep their own licenses: the HDK runtime (`@lloyal-labs/*`) is Fair Source (FSL-1.1-Apache-2.0), the `harness.dev` CLI is Apache-2.0.
+**Proprietary — © 2026 Lloyal AI. All rights reserved.** Artifact is private and confidential; not licensed for redistribution or derivative use. See `LICENSE`. Its dependencies keep their own licenses: the HDK runtime (`@lloyal-labs/*`) is Fair Source (FSL-1.1-Apache-2.0), the `harness.dev` CLI is Apache-2.0.

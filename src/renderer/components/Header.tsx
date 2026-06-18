@@ -1,9 +1,9 @@
 import React from 'react'
 import type { AppState } from '../../tui-ink/state'
-import { dispatch } from '../bridge'
 import { useUiNav } from '../ui-store'
 import { IconList, IconSettings } from '../icons'
 import { Gauge } from './Gauge'
+import logoUrl from '../assets/logo.png'
 
 /** Activity-waveform glyph for the live trace pane. */
 const IconTrace = (): React.ReactElement => (
@@ -12,29 +12,77 @@ const IconTrace = (): React.ReactElement => (
   </svg>
 )
 
+/** Upward arrow — "data leaving the device" cue on the live egress chip. */
+const IconEgress = (): React.ReactElement => (
+  <svg className="egr-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 19V6M6 12l6-6 6 6" />
+  </svg>
+)
+
+/**
+ * Live network-egress signal: true while any in-flight agent tool call belongs
+ * to an app holding a `network` / `data-egress` entitlement. Entitlement-driven
+ * (not tool-name-coded), so it generalizes to any networked AgentApp. An
+ * "in-flight" call = a `tool_call` timeline item with no matching `tool_result`
+ * yet (by callId), on a non-done agent. This is the "permissions visible while
+ * active" promise made literal — the indicator lights ONLY while data is
+ * actually leaving the device.
+ */
+function networkActive(state: AppState): boolean {
+  const netTools = new Set<string>()
+  for (const app of state.apps) {
+    if (app.entitlements.some((e) => e === 'network' || e === 'data-egress')) {
+      for (const t of app.tools) netTools.add(t)
+    }
+  }
+  if (netTools.size === 0) return false
+  for (const a of state.agents.values()) {
+    if (a.phase === 'done') continue
+    const resolved = new Set<number>()
+    for (const it of a.timeline) if (it.kind === 'tool_result' && it.callId != null) resolved.add(it.callId)
+    for (const it of a.timeline) {
+      if (it.kind === 'tool_call' && !resolved.has(it.id) && netTools.has(it.tool)) return true
+    }
+  }
+  return false
+}
+
+/** Latch `active` on, then hold for `holdMs` after it clears — so a sub-second
+ *  network call still registers and a burst of calls doesn't strobe the chip. */
+function useSticky(active: boolean, holdMs: number): boolean {
+  const [on, setOn] = React.useState(active)
+  React.useEffect(() => {
+    if (active) {
+      setOn(true)
+      return
+    }
+    const t = setTimeout(() => setOn(false), holdMs)
+    return () => clearTimeout(t)
+  }, [active, holdMs])
+  return on
+}
+
 export function Header({ state }: { state: AppState }): React.ReactElement {
   const openDrawer = useUiNav((s) => s.openDrawer)
-  const mode = state.mode ?? 'flat'
-  const setMode = (m: 'flat' | 'deep'): void => {
-    if (m !== mode) dispatch({ type: 'change_mode', mode: m })
-  }
+  const egress = useSticky(networkActive(state), 1200)
   // Two-tier header:
   //  · `.titlebar` is the custom dark drag strip carrying only the centered
   //    app name. It reserves space for the native window controls — macOS
   //    traffic-lights sit top-LEFT (pad-left), win/linux controls-overlay sits
   //    top-RIGHT (pad-right) — while the name stays absolutely centered.
-  //  · `.toolbar` is the functional, NON-drag row (logo, breadcrumb, mode
-  //    switch, status, settings).
+  //  · `.toolbar` is the functional, NON-drag row (logo, breadcrumb, status,
+  //    settings). Reasoning mode (Parallel/Deep) is chosen at plan review, not
+  //    here — switching mid-run would invalidate an in-flight plan.
   const isMac = window.reasoning.platform === 'darwin'
   const titleCls = isMac ? 'titlebar mac' : 'titlebar win'
   return (
     <>
       <div className={titleCls}>
-        <span className="appname">reasoning.run</span>
+        <span className="appname">Artifact</span>
       </div>
       <div className="toolbar">
         <div className="wsbtn brand">
-          <span className="glyph">R</span>
+          <img className="glyph" src={logoUrl} alt="Artifact" />
         </div>
         {state.query && (
           <div className="hcrumb" title={state.query}>
@@ -42,28 +90,17 @@ export function Header({ state }: { state: AppState }): React.ReactElement {
           </div>
         )}
         <div className="hspace" />
-        <div className="modesw">
-          <button className={mode === 'flat' ? 'on' : ''} onClick={() => setMode('flat')}>
-            <svg className="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}>
-              <path d="M5 5v14M19 5v14M12 4v4" strokeLinecap="round" />
-              <circle cx="12" cy="3" r="1.6" />
-            </svg>
-            Parallel
-          </button>
-          <button className={mode === 'deep' ? 'on' : ''} onClick={() => setMode('deep')}>
-            <svg className="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}>
-              <circle cx="12" cy="4" r="1.8" />
-              <circle cx="12" cy="12" r="1.8" />
-              <circle cx="12" cy="20" r="1.8" />
-              <path d="M12 6v4M12 14v4" />
-            </svg>
-            Deep
-          </button>
-        </div>
-        <div className="hspace" />
-        <div className="localdot">
-          <span className="orb" />
-          <b>Local</b>
+        <div className="netstatus">
+          <span className="localdot">
+            <span className="orb" />
+            <b>Local</b>
+          </span>
+          {egress && (
+            <span className="egress" title="A networked AgentApp is reaching the internet right now — data is leaving your device">
+              <IconEgress />
+              <b>Network</b>
+            </span>
+          )}
         </div>
         <Gauge pct={state.pressure?.pct ?? 0} />
         <button
