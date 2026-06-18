@@ -16,7 +16,7 @@ import { create } from 'zustand'
  *    to one agent (the footer "Sources (N)" entry); undefined = global (the
  *    header sources stat).
  */
-export type DrawerMode = 'settings' | 'sources' | 'report'
+export type DrawerMode = 'settings' | 'sources' | 'report' | 'trace'
 
 /** Payload for the 'report' drawer — the right-side preview pane. */
 export interface ReportPreview {
@@ -37,7 +37,7 @@ interface UiNavStore {
   focusNonce: number
   focusAgent: (id: number) => void
   drawer: DrawerState | null
-  openDrawer: (mode: 'settings' | 'sources', filterAgentId?: number) => void
+  openDrawer: (mode: 'settings' | 'sources' | 'trace', filterAgentId?: number) => void
   /** Open the right-side report preview pane (with a Save-as-PDF action). */
   openReport: (report: ReportPreview) => void
   closeDrawer: () => void

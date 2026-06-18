@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'node:path'
 import { totalmem } from 'node:os'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from 'node:fs'
 import { reduce } from '../src/tui-ink/reducer'
 import { initialState, type AppState } from '../src/tui-ink/state'
 import type { WorkflowEvent, Command } from '../src/tui-ink/events'
@@ -39,12 +39,65 @@ let win: BrowserWindow | null = null
 let engine: UtilityProcess | null = null
 let appState: AppState = initialState
 let seq = 0
+// Run output dir (where the engine writes report.md/annexure + the session
+// trace-*.jsonl). Set in spawnEngine; read by the live-trace tailer.
+let outputDir = ''
+// Live-trace tailer: poll the newest trace-*.jsonl and stream appends to the
+// renderer's Trace pane. Null when no Trace pane is open.
+let traceWatch: { file: string; offset: number; timer: ReturnType<typeof setInterval> } | null = null
+
+/** Newest `trace-*.jsonl` filename in the output dir, or null. */
+function newestTraceFile(): string | null {
+  if (!outputDir) return null
+  try {
+    const files = readdirSync(outputDir).filter((f) => /^trace-.*\.jsonl$/.test(f))
+    if (files.length === 0) return null
+    return files
+      .map((f) => ({ f, t: statSync(join(outputDir, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t)[0].f
+  } catch {
+    return null
+  }
+}
+
+/** Read bytes appended to `file` since `offset` (best-effort). */
+function readFrom(file: string, offset: number): { text: string; offset: number } {
+  let fd: number | null = null
+  try {
+    fd = openSync(file, 'r')
+    const size = fstatSync(fd).size
+    if (size <= offset) return { text: '', offset }
+    const buf = Buffer.allocUnsafe(size - offset)
+    readSync(fd, buf, 0, size - offset, offset)
+    return { text: buf.toString('utf8'), offset: size }
+  } catch {
+    return { text: '', offset }
+  } finally {
+    if (fd !== null) closeSync(fd)
+  }
+}
+
+/** Poll tick: stream new trace bytes; switch to a newer trace file if one rotates in. */
+function pollTrace(): void {
+  if (!traceWatch) return
+  const newest = newestTraceFile()
+  if (newest && newest !== traceWatch.file) {
+    traceWatch.file = newest
+    traceWatch.offset = 0
+  }
+  if (!traceWatch.file) return
+  const { text, offset } = readFrom(join(outputDir, traceWatch.file), traceWatch.offset)
+  if (text) {
+    traceWatch.offset = offset
+    win?.webContents.send('engine:trace:append', text)
+  }
+}
 
 function spawnEngine(): void {
   // out/main/index.js → <projectRoot>/dist/bundle.mjs (the esbuild engine).
   const enginePath = join(__dirname, '../../dist/bundle.mjs')
   const configPath = join(app.getPath('userData'), 'harness.json')
-  const outputDir = join(app.getPath('documents'), 'reasoning.run')
+  outputDir = join(app.getPath('documents'), 'reasoning.run')
 
   // RR_BRIDGE → harness streams over parentPort instead of mounting Ink.
   // GPU: macOS auto-selects the Metal binary (default darwin-arm64; no LLOYAL_GPU).
@@ -247,6 +300,27 @@ app.whenReady().then(() => {
       }
     },
   )
+
+  // Live Trace pane: tail the newest trace-*.jsonl. `start` returns the
+  // current (tail-capped) content + the file path; appended lines stream via
+  // 'engine:trace:append'. `stop` clears the poll when the pane closes.
+  ipcMain.handle('engine:trace:start', (): { file: string | null; text: string } => {
+    const f = newestTraceFile()
+    let text = ''
+    let offset = 0
+    if (f) {
+      const r = readFrom(join(outputDir, f), 0)
+      text = r.text.split('\n').slice(-2000).join('\n') // cap backfill
+      offset = r.offset
+    }
+    if (traceWatch) clearInterval(traceWatch.timer)
+    traceWatch = { file: f ?? '', offset, timer: setInterval(pollTrace, 250) }
+    return { file: f ? join(outputDir, f) : null, text }
+  })
+  ipcMain.on('engine:trace:stop', () => {
+    if (traceWatch) clearInterval(traceWatch.timer)
+    traceWatch = null
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

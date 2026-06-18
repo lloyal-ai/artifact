@@ -10,6 +10,7 @@ import { ReportView } from './components/ReportView'
 import { SettingsBody } from './components/Settings'
 import { SourcesBody } from './components/Sources'
 import { Timeline } from './components/Timeline'
+import { TraceView } from './components/TraceView'
 
 const BOOT_PHASES = new Set(['boot', 'loading', 'downloading', 'boot_error'])
 
@@ -62,6 +63,13 @@ function InspectorDrawer(): React.ReactElement | null {
     return (
       <Drawer key="report" title={drawer.report.title} onClose={closeDrawer} wide>
         <ReportView report={drawer.report} />
+      </Drawer>
+    )
+  }
+  if (drawer.mode === 'trace') {
+    return (
+      <Drawer key="trace" title="Trace" onClose={closeDrawer} wide>
+        <TraceView />
       </Drawer>
     )
   }

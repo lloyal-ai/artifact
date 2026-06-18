@@ -5,6 +5,13 @@ import { useUiNav } from '../ui-store'
 import { IconList, IconSettings } from '../icons'
 import { Gauge } from './Gauge'
 
+/** Activity-waveform glyph for the live trace pane. */
+const IconTrace = (): React.ReactElement => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 12h3l2 6 4-14 2 8h2.5l1.5-3H21" />
+  </svg>
+)
+
 export function Header({ state }: { state: AppState }): React.ReactElement {
   const openDrawer = useUiNav((s) => s.openDrawer)
   const mode = state.mode ?? 'flat'
@@ -67,6 +74,9 @@ export function Header({ state }: { state: AppState }): React.ReactElement {
           <IconList className="hpill-ic" />
           <b>{state.sourceCount}</b>
           <span className="lab">sources</span>
+        </button>
+        <button className="iconbtn" title="Live trace" onClick={() => openDrawer('trace')}>
+          <IconTrace />
         </button>
         <button className="iconbtn" title="Settings" onClick={() => openDrawer('settings')}>
           <IconSettings />

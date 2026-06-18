@@ -46,6 +46,21 @@ const api = {
   exportPdf(opts: { defaultName: string; html: string }): Promise<string | null> {
     return ipcRenderer.invoke('engine:export-pdf', opts) as Promise<string | null>
   },
+  /** Begin tailing the newest session trace-*.jsonl. Resolves to the current
+   *  (tail-capped) content + the file path; new lines stream via onTraceAppend. */
+  startTrace(): Promise<{ file: string | null; text: string }> {
+    return ipcRenderer.invoke('engine:trace:start') as Promise<{ file: string | null; text: string }>
+  },
+  /** Subscribe to appended trace text. Returns unsubscribe. */
+  onTraceAppend(cb: (text: string) => void): () => void {
+    const listener = (_e: Electron.IpcRendererEvent, text: string): void => cb(text)
+    ipcRenderer.on('engine:trace:append', listener)
+    return () => ipcRenderer.removeListener('engine:trace:append', listener)
+  },
+  /** Stop tailing (call when the Trace pane closes). */
+  stopTrace(): void {
+    ipcRenderer.send('engine:trace:stop')
+  },
 }
 
 contextBridge.exposeInMainWorld('reasoning', api)
