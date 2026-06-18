@@ -20,6 +20,7 @@ export function Drawer({
   onClose,
   actions,
   wide,
+  flush,
   children,
 }: {
   title: string
@@ -28,6 +29,8 @@ export function Drawer({
   actions?: React.ReactNode
   /** Wider panel — for the report preview pane. */
   wide?: boolean
+  /** Drop the body padding so the child fills the pane edge-to-edge (Trace). */
+  flush?: boolean
   children: React.ReactNode
 }): React.ReactElement {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -85,7 +88,7 @@ export function Drawer({
             ✕
           </button>
         </div>
-        <div className="panel-bd">{children}</div>
+        <div className={`panel-bd${flush ? ' flush' : ''}`}>{children}</div>
       </div>
     </>
   )

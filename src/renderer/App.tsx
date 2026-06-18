@@ -68,7 +68,7 @@ function InspectorDrawer(): React.ReactElement | null {
   }
   if (drawer.mode === 'trace') {
     return (
-      <Drawer key="trace" title="Trace" onClose={closeDrawer} wide>
+      <Drawer key="trace" title="Trace" onClose={closeDrawer} wide flush>
         <TraceView />
       </Drawer>
     )
