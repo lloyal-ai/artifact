@@ -340,9 +340,11 @@ input { font-family: inherit; }
    joined with signed catalog metadata. Config fields are READ-ONLY in
    this increment — only the enable toggle is interactive.
    ============================================================ */
-.scrim { position: fixed; inset: 0; background: rgba(6,8,13,0.62); backdrop-filter: blur(3px); z-index: 40; }
+/* Overlays sit above the header's drag region; without no-drag, macOS treats
+   clicks in the top strip (e.g. the panel's ✕) as window-drags, not clicks. */
+.scrim { position: fixed; inset: 0; background: rgba(6,8,13,0.62); backdrop-filter: blur(3px); z-index: 40; -webkit-app-region: no-drag; }
 .panel { position: fixed; top: 0; right: 0; bottom: 0; width: 468px; background: var(--bg-1);
-  border-left: 1px solid var(--line); box-shadow: var(--shadow); display: flex; flex-direction: column; z-index: 41; }
+  border-left: 1px solid var(--line); box-shadow: var(--shadow); display: flex; flex-direction: column; z-index: 41; -webkit-app-region: no-drag; }
 .panel-hd { display: flex; align-items: baseline; gap: 12px; padding: 22px 24px 18px; border-bottom: 1px solid var(--line); }
 .panel-hd .t { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; color: var(--ink); }
 .panel-hd .sub { font-size: 13px; color: var(--ink-3); }

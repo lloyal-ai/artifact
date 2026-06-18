@@ -448,7 +448,7 @@ function Advanced(): React.ReactElement {
           <span className="iv">{rerankName}</span>
         </div>
         <div className="irow">
-          <span className="il">Backend</span>
+          <span className="il">Compute</span>
           <span className="iv">Metal · auto</span>
         </div>
         <div className="irow">
@@ -457,7 +457,7 @@ function Advanced(): React.ReactElement {
         </div>
       </div>
       <div className="adv-note">
-        Fixed to keep every app behaving exactly as tested · backend detected automatically.
+        Fixed to keep every app behaving exactly as tested · compute backend detected automatically.
       </div>
     </div>
   )
