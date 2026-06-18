@@ -19,7 +19,16 @@ export function Composer({ state }: { state: AppState }): React.ReactElement {
   }, [state.composerPrefill])
 
   const clarifying = state.uiPhase === 'clarifying'
-  const canSubmit = state.uiPhase === 'composer' || state.uiPhase === 'done' || clarifying
+  // All-apps-excluded: every known app is opted out of participation. An app is
+  // included when participation[name] !== false. Submitting with zero sources
+  // would research nothing — so block it. Don't block on an empty app list
+  // (boot/edge case) or while clarifying (the clarify answer needs no sources).
+  const noSources =
+    !clarifying &&
+    state.apps.length > 0 &&
+    state.apps.every((a) => state.participation[a.name] === false)
+  const canSubmit =
+    (state.uiPhase === 'composer' || state.uiPhase === 'done' || clarifying) && !noSources
   const placeholder = clarifying
     ? 'Answer to narrow this down…'
     : state.uiPhase === 'done'
@@ -34,11 +43,13 @@ export function Composer({ state }: { state: AppState }): React.ReactElement {
     setQ('')
   }
 
-  const chint = clarifying
-    ? 'The planner needs a little more to route this well'
-    : (state.mode ?? 'flat') === 'deep'
-      ? 'Deep · tasks chain down the spine · each builds on the last'
-      : 'Parallel · agents fan out from the shared context · converge at synthesis'
+  const chint = noSources
+    ? 'Every app is turned off — enable at least one in Settings to research'
+    : clarifying
+      ? 'The planner needs a little more to route this well'
+      : (state.mode ?? 'flat') === 'deep'
+        ? 'Deep · tasks chain down the spine · each builds on the last'
+        : 'Parallel · agents fan out from the shared context · converge at synthesis'
 
   return (
     <div className="composer">
@@ -50,7 +61,7 @@ export function Composer({ state }: { state: AppState }): React.ReactElement {
             if (e.key === 'Enter') submit()
           }}
           placeholder={placeholder}
-          disabled={!canSubmit}
+          disabled={state.uiPhase !== 'composer' && state.uiPhase !== 'done' && !clarifying}
           autoFocus
         />
         <button className="send" disabled={!canSubmit || !q.trim()} onClick={submit}>

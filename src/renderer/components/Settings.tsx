@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { AppDescriptor } from '../../tui-ink/state'
 import { dispatch, useEngineState, useEngineStore } from '../bridge'
 
@@ -470,21 +470,60 @@ function basename(p: string): string {
 
 // ── Drawer ───────────────────────────────────────────────────────
 
+// Tab-cycle focusable selector — interactive elements that aren't disabled or
+// removed from the tab order.
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 export function Settings({ onClose }: { onClose: () => void }): React.ReactElement {
   const apps = useEngineStore((s) => s.apps)
-  // Esc closes the drawer (the scrim already closes on click). Full focus-trap
-  // is deferred — Esc + scrim is enough this pass.
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Esc closes the drawer (the scrim also closes on click), and Tab/Shift+Tab
+  // is trapped within the panel so focus can't escape to the app behind it.
+  // On open we focus the first focusable element; on close we restore focus to
+  // whatever opened the drawer (the Settings button).
   useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    const panel = panelRef.current
+    const first = panel?.querySelector<HTMLElement>(FOCUSABLE)
+    first?.focus()
+
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !panel) return
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE))
+      if (items.length === 0) {
+        e.preventDefault()
+        return
+      }
+      const firstEl = items[0]
+      const lastEl = items[items.length - 1]
+      const active = document.activeElement
+      // Wrap at the edges; also pull focus back in if it has somehow escaped.
+      if (e.shiftKey) {
+        if (active === firstEl || !panel.contains(active)) {
+          e.preventDefault()
+          lastEl.focus()
+        }
+      } else if (active === lastEl || !panel.contains(active)) {
+        e.preventDefault()
+        firstEl.focus()
+      }
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      opener?.focus?.()
+    }
   }, [onClose])
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <div className="panel">
+      <div className="panel" ref={panelRef}>
         <div className="panel-hd">
           <div className="t">Settings</div>
           <button className="x" onClick={onClose} title="Close">

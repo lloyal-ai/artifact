@@ -309,6 +309,11 @@ export function AgentCard({
 export function SynthCard({ state }: { state: AppState }): React.ReactElement {
   const s = state.synth
   const mode = state.mode ?? 'flat'
+  // Research is done and we've entered the synth phase, but the synth stream
+  // hasn't opened yet (research:done → phase 'synth' precedes synthesize:start).
+  // Surface that pre-stream window as a live "preparing" beat instead of a
+  // static "pending" so it doesn't read as a dead wait.
+  const preparing = !s.open && !s.done && state.phase === 'synth'
   const pill = s.done ? (
     <span className="pill p-done">✓ done</span>
   ) : s.open ? (
@@ -316,11 +321,17 @@ export function SynthCard({ state }: { state: AppState }): React.ReactElement {
       <span className="ld" />
       synthesizing
     </span>
+  ) : preparing ? (
+    <span className="pill p-live" style={{ ['--kc' as string]: 'var(--syn)' }}>
+      <span className="ld" />
+      preparing
+    </span>
   ) : (
     <span className="pill p-queued">pending</span>
   )
+  const live = (s.open && !s.done) || preparing
   return (
-    <div className={`card ${s.open && !s.done ? 'live' : s.done ? '' : 'ghost'}`} style={{ ['--kc' as string]: 'var(--syn)' }}>
+    <div className={`card ${live ? 'live' : s.done ? '' : 'ghost'}`} style={{ ['--kc' as string]: 'var(--syn)' }}>
       <div className="chead">
         <span className="cbadge">∑</span>
         <div className="ctitle">

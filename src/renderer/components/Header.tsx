@@ -22,7 +22,7 @@ export function Header({
         <span className="nm">reasoning.run</span>
       </div>
       {state.query && (
-        <div className="hcrumb">
+        <div className="hcrumb" title={state.query}>
           <b>{state.query}</b>
         </div>
       )}

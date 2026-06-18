@@ -164,6 +164,38 @@ function buildBeats(s: AppState): BeatDef[] {
   // Research.
   const ids = s.researchAgentIds
   const researchActive = s.phase === 'research' || s.phase === 'synth' || s.answer != null
+
+  // Spinning up — a live placeholder so the plan-accepted → first-agent window
+  // isn't a dead wait (context is prefix-shared once before the agents branch).
+  // Disappears the moment the first agent lands. Same ❖/p-live markup as the
+  // preplan beat above.
+  if (s.phase === 'research' && ids.length === 0 && s.plan) {
+    const n = s.plan.tasks.length
+    const deep = mode === 'deep'
+    B.push({
+      key: 'spinup',
+      side: 'center',
+      flag: 'Research',
+      kc: 'var(--accent)',
+      knot: 'live',
+      node: (
+        <div className="card" style={{ ['--kc' as string]: 'var(--accent)' }}>
+          <div className="chead">
+            <span className="cbadge">❖</span>
+            <div className="ctitle">
+              <div className="t">{deep ? 'Starting the first task' : `Spinning up ${n} agents`}</div>
+              <div className="s">sharing context before they branch</div>
+            </div>
+            <span className="pill p-live">
+              <span className="ld" />
+              spinning up
+            </span>
+          </div>
+        </div>
+      ),
+    })
+  }
+
   if (ids.length > 0 || (researchActive && s.plan)) {
     if (mode === 'flat') {
       // Parallel — a fork beat, then each agent alternating off both sides.
@@ -244,7 +276,11 @@ function buildBeats(s: AppState): BeatDef[] {
       side: mode === 'deep' ? 'right' : 'center',
       flag: 'Synthesis',
       kc: 'var(--syn)',
-      knot: s.synth.done ? 'fill' : s.synth.open ? 'live' : 'ghost',
+      knot: s.synth.done
+        ? 'fill'
+        : s.synth.open || (!s.synth.done && s.phase === 'synth')
+          ? 'live'
+          : 'ghost',
       node: <SynthCard state={s} />,
     })
   }
@@ -277,7 +313,12 @@ export function Timeline({ state }: { state: AppState }): React.ReactElement {
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !pinned.current) return
-    const active = state.phase === 'recon' || state.phase === 'research' || state.phase === 'synth'
+    const active =
+      state.phase === 'recon' ||
+      state.phase === 'plan' ||
+      state.phase === 'research' ||
+      state.phase === 'synth' ||
+      state.uiPhase === 'planning'
     if (active) el.scrollTop = el.scrollHeight
   })
 
