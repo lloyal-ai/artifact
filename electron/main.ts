@@ -46,6 +46,14 @@ let outputDir = ''
 // renderer's Trace pane. Null when no Trace pane is open.
 let traceWatch: { file: string; offset: number; timer: ReturnType<typeof setInterval> } | null = null
 
+/** Send to the renderer only if the window is still alive. `win?.` is not
+ *  enough — on close `win` is non-null but DESTROYED, and `.send` throws
+ *  "Object has been destroyed" (then re-throws on every subsequent engine
+ *  message, spamming the crash dialog). */
+function safeSend(channel: string, payload: unknown): void {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
+}
+
 /** Newest `trace-*.jsonl` filename in the output dir, or null. */
 function newestTraceFile(): string | null {
   if (!outputDir) return null
@@ -89,7 +97,7 @@ function pollTrace(): void {
   const { text, offset } = readFrom(join(outputDir, traceWatch.file), traceWatch.offset)
   if (text) {
     traceWatch.offset = offset
-    win?.webContents.send('engine:trace:append', text)
+    safeSend('engine:trace:append', text)
   }
 }
 
@@ -133,7 +141,7 @@ function spawnEngine(): void {
       seq++
       appState = reduce(appState, msg.payload)
       // Forward the raw event (+ seq) — the renderer reduces it itself.
-      win?.webContents.send('engine:event', { seq, ev: msg.payload })
+      safeSend('engine:event', { seq, ev: msg.payload })
       if (process.env.RR_DEBUG) console.log('[main<-engine]', msg.payload.type, '→ uiPhase:', appState.uiPhase)
       // Gated round-trip self-test: fire a submit_query the moment the engine
       // reaches the composer, to prove renderer→engine→planner→back headlessly.
@@ -189,6 +197,17 @@ function createWindow(): void {
     },
   })
   win.once('ready-to-show', () => win?.show())
+
+  // On close, drop the reference (so `safeSend` short-circuits) and stop the
+  // trace tailer — otherwise in-flight engine messages / poll ticks fire on a
+  // destroyed window.
+  win.on('closed', () => {
+    win = null
+    if (traceWatch) {
+      clearInterval(traceWatch.timer)
+      traceWatch = null
+    }
+  })
 
   // Links in the answer/sources are http(s) → open in the system browser, never
   // navigate the renderer away from the app. Any other scheme is dropped.
