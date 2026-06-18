@@ -273,6 +273,18 @@ input { font-family: inherit; }
 .prow .n { width: 22px; height: 22px; border-radius: 7px; background: var(--bg-3); color: var(--ink-3); font-size: 12px; font-weight: 700; display: grid; place-items: center; flex: none; margin-top: 1px; }
 .prow .src { margin-left: auto; font-size: 10.5px; color: var(--ink-4); display: flex; align-items: center; gap: 5px; flex: none; margin-top: 4px; }
 .prow .src .d { width: 6px; height: 6px; border-radius: 50%; }
+/* clickable plan row → jump to its agent */
+.prow.nav { cursor: pointer; }
+.prow.nav:hover { background: var(--bg-2); }
+/* agent-colored per-task status glyph (color set inline via currentColor) */
+.tstat { flex: none; width: 18px; height: 18px; display: grid; place-items: center; margin-top: 1px; }
+.tstat svg { width: 15px; height: 15px; }
+.tstat.paused svg { width: 13px; height: 13px; opacity: 0.9; }
+/* pending — hollow ring, dim */
+.tstat .tring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; opacity: 0.35; }
+/* running — spinning arc in the agent color */
+.tstat .tspin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 22%, transparent); border-top-color: currentColor; animation: spin 0.7s linear infinite; }
+.tstat.done svg { color: currentColor; }
 /* ── Interactive plan-review rows (uiPhase === plan_review) ── */
 .prow.editing { align-items: center; gap: 8px; padding: 6px 8px; }
 .prow.editing:hover { background: transparent; }

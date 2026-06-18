@@ -2,12 +2,121 @@ import React from 'react'
 import type { ResearchTask } from '@lloyal-labs/rig'
 import type { AgentRuntime, AppState } from '../../tui-ink/state'
 import { dispatch } from '../bridge'
+import { useUiNav } from '../ui-store'
 import { IconChevron } from '../icons'
 import { Markdown } from './Markdown'
 import { SourceChips, WorkRows } from './Work'
 
 export const AGENT_COLORS = ['var(--a1)', 'var(--a2)', 'var(--a3)', 'var(--a4)', 'var(--a5)']
 export const agentColor = (i: number): string => AGENT_COLORS[i % AGENT_COLORS.length]
+
+// ── Plan-card per-task live status ───────────────────────────────
+// pending (pre-spawn) → running (producing) → paused (the pool is in a tool
+// barrier; in lockstep ALL running agents hold, so this is derived POOL-level
+// so the spinner never spins while generation is actually frozen) → done.
+// Agent-colored. Forward-compatible: when tool I/O fans out, `paused` splits
+// into fetching/running per agent — same component, richer derivation.
+type TaskStatus = 'pending' | 'running' | 'paused' | 'done'
+
+/** The research agent bound to a task index — live (researchAgentIds) or its
+ *  finished scrollback snapshot. Null before the task spawns. */
+function agentForTask(s: AppState, taskIndex: number): AgentRuntime | null {
+  for (const id of s.researchAgentIds) {
+    const a = s.agents.get(id)
+    if (a && a.taskIndex === taskIndex) return a
+  }
+  for (const it of s.scrollback) {
+    if (it.kind === 'agent' && it.agent.taskIndex === taskIndex) return it.agent
+  }
+  return null
+}
+
+/** Pool-level: is any research agent in a tool dispatch right now? In the
+ *  current lockstep tick loop the whole pool holds while one agent dispatches,
+ *  so this drives `paused` for every running task — honest: no spinning glyph
+ *  while generation is frozen. */
+function poolDispatching(s: AppState): boolean {
+  for (const id of s.researchAgentIds) {
+    const a = s.agents.get(id)
+    if (a && (a.phase === 'tool' || a.pendingToolCallId !== null)) return true
+  }
+  return false
+}
+
+function taskStatus(
+  s: AppState,
+  taskIndex: number,
+  dispatching: boolean,
+): { status: TaskStatus; agent: AgentRuntime | null } {
+  const agent = agentForTask(s, taskIndex)
+  if (!agent) return { status: 'pending', agent: null }
+  if (agent.phase === 'done') return { status: 'done', agent }
+  return { status: dispatching ? 'paused' : 'running', agent }
+}
+
+const STATUS_TITLE: Record<TaskStatus, string> = {
+  pending: 'Queued',
+  running: 'Running',
+  paused: 'Paused — the tool result is decoding into the shared context before the next token',
+  done: 'Done',
+}
+
+/** Agent-colored status glyph: hollow ring (pending) · spinner (running) ·
+ *  pause bars (paused) · tick (done). Color flows via `currentColor`. */
+function TaskStatusGlyph({ status, color }: { status: TaskStatus; color: string }): React.ReactElement {
+  return (
+    <span className={`tstat ${status}`} style={{ color }} title={STATUS_TITLE[status]}>
+      {status === 'pending' && <span className="tring" />}
+      {status === 'running' && <span className="tspin" />}
+      {status === 'paused' && (
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="5" width="4" height="14" rx="1.5" />
+          <rect x="14" y="5" width="4" height="14" rx="1.5" />
+        </svg>
+      )}
+      {status === 'done' && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+          <path d="M5 12l4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </span>
+  )
+}
+
+/** A read-only plan row (during/after research): number · description · live
+ *  status glyph · optional app chip. Clicking jumps to + expands the agent. */
+function PlanStatusRow({
+  state,
+  task,
+  index,
+  dispatching,
+}: {
+  state: AppState
+  task: ResearchTask
+  index: number
+  dispatching: boolean
+}): React.ReactElement {
+  const { status, agent } = taskStatus(state, index, dispatching)
+  const focusAgent = useUiNav((s) => s.focusAgent)
+  const clickable = agent !== null
+  return (
+    <div
+      className={`prow ${clickable ? 'nav' : ''}`}
+      onClick={clickable ? () => focusAgent(agent!.id) : undefined}
+      title={clickable ? 'Jump to this agent' : undefined}
+    >
+      <span className="n">{index + 1}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>{task.description}</span>
+      <TaskStatusGlyph status={status} color={agentColor(index)} />
+      {task.app && (
+        <span className="src">
+          <span className="d" style={{ background: agentColor(index) }} />
+          {task.app}
+        </span>
+      )}
+    </div>
+  )
+}
 
 /**
  * A centred milestone on the spine — the spine runs visibly through it (ghost
@@ -152,6 +261,9 @@ export function PlanCard({ state }: { state: AppState }): React.ReactElement {
   if (!plan) return <></>
   const interactive = state.uiPhase === 'plan_review'
   const mode = state.mode ?? 'flat'
+  // Pool-level dispatch flag (lockstep): drives every running row's `paused`
+  // glyph so none spin while the pool is held in a tool barrier.
+  const dispatching = poolDispatching(state)
   const sub =
     mode === 'deep'
       ? "each task's findings feed the next down the spine"
@@ -171,14 +283,7 @@ export function PlanCard({ state }: { state: AppState }): React.ReactElement {
           interactive ? (
             <PlanTaskRow key={i} task={t} index={i} count={plan.tasks.length} />
           ) : (
-            <div className="prow" key={i}>
-              <span className="n">{i + 1}</span>
-              <span style={{ flex: 1, minWidth: 0 }}>{t.description}</span>
-              <span className="src">
-                <span className="d" style={{ background: agentColor(i) }} />
-                {t.app ?? ''}
-              </span>
-            </div>
+            <PlanStatusRow key={i} state={state} task={t} index={i} dispatching={dispatching} />
           ),
         )}
         {interactive && (
@@ -279,6 +384,20 @@ export function AgentCard({
   const [expanded, setExpanded] = React.useState(false)
   const showBody = done ? expanded : open
   const kc = agentColor(colorIdx)
+
+  // Jump-to-agent: clicking a plan-card task row bumps focusNonce with this
+  // agent's id → scroll the card into view and expand it (done cards only need
+  // expanding; live cards are already open).
+  const cardRef = React.useRef<HTMLDivElement>(null)
+  const focusNonce = useUiNav((s) => s.focusNonce)
+  const focusAgentId = useUiNav((s) => s.focusAgentId)
+  React.useEffect(() => {
+    if (focusAgentId !== agent.id) return
+    if (done) setExpanded(true)
+    cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // Re-fire only when a new focus request arrives (nonce), not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce])
   const pill = done ? (
     <span className="pill p-done">✓ Report ready</span>
   ) : (
@@ -290,6 +409,7 @@ export function AgentCard({
   const task = agent.taskDescription ?? agent.dependencyHint
   return (
     <div
+      ref={cardRef}
       className={`card agent ${done ? '' : 'live'} ${showBody ? 'open' : ''}`}
       style={{ ['--kc' as string]: kc }}
     >
