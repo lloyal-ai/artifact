@@ -31,6 +31,11 @@ const api = {
   openExternal(url: string): void {
     void ipcRenderer.invoke('engine:open-external', url)
   },
+  /** Native folder picker for path-like app-config fields (corpus folder, …).
+   *  Resolves to the chosen absolute path, or null if the user cancelled. */
+  chooseDirectory(): Promise<string | null> {
+    return ipcRenderer.invoke('engine:choose-directory') as Promise<string | null>
+  },
 }
 
 contextBridge.exposeInMainWorld('reasoning', api)

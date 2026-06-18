@@ -197,12 +197,22 @@ function ConfigFieldRow({
   // round-trips and apps:state re-emits).
   React.useEffect(() => setDraft(field.stored), [field.stored])
 
-  const save = (): void => {
+  const commit = (value: string): void => {
     dispatch({
       type: 'set_app_config',
       name: appName,
-      values: { ...config, [field.key]: draft },
+      values: { ...config, [field.key]: value },
     })
+  }
+  const save = (): void => commit(draft)
+
+  // Path-like fields ("Choose…") open a native folder picker; the chosen path
+  // is saved immediately so there's no extra Save step.
+  const choose = async (): Promise<void> => {
+    const dir = await window.reasoning.chooseDirectory()
+    if (dir === null) return
+    setDraft(dir)
+    commit(dir)
   }
 
   return (

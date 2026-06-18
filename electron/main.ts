@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, utilityProcess, type UtilityProcess } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'node:path'
 import { totalmem } from 'node:os'
 import { writeFileSync } from 'node:fs'
@@ -193,6 +193,17 @@ app.whenReady().then(() => {
   // renderer asks to open a link (answer markdown / source chip) in the browser.
   ipcMain.handle('engine:open-external', (_e, url: unknown) => {
     if (typeof url === 'string' && isExternalUrl(url)) void shell.openExternal(url)
+  })
+
+  // Native folder picker for path-like app-config fields (e.g. the corpus
+  // folder). Returns the chosen absolute path, or null if cancelled.
+  ipcMain.handle('engine:choose-directory', async (): Promise<string | null> => {
+    if (!win) return null
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Choose folder',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
   })
 
   app.on('activate', () => {
