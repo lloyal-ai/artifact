@@ -43,9 +43,6 @@ export function Composer({ state }: { state: AppState }): React.ReactElement {
   return (
     <div className="composer">
       <div className="cinner">
-        <button className="iconbtn" style={{ border: 0, background: 'var(--bg-3)', width: 30, height: 30 }}>
-          ＋
-        </button>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}

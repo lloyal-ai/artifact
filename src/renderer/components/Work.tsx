@@ -92,7 +92,12 @@ export function SourceChips({ agent }: { agent: AgentRuntime }): React.ReactElem
   return (
     <div className="csrc">
       {hosts.slice(0, 8).map((h) => (
-        <span className="srcchip" key={h}>
+        <span
+          className="srcchip"
+          key={h}
+          title={h}
+          onClick={() => window.reasoning.openExternal('https://' + h)}
+        >
           <span className="host">{h}</span>
         </span>
       ))}

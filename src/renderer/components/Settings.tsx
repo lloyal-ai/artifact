@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { AppDescriptor } from '../../tui-ink/state'
 import { dispatch, useEngineState, useEngineStore } from '../bridge'
 
@@ -77,6 +77,29 @@ function entMeta(key: string): EntMeta {
       label: key,
       icon: sw(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z" strokeLinejoin="round" />),
     }
+  )
+}
+
+/** Generic app glyph — the fallback when no iconUrl is set or it fails to load. */
+const AppGlyph = (): React.ReactElement => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}>
+    <rect x="4" y="4" width="16" height="16" rx="4" />
+    <path d="M8 12h8M12 8v8" strokeLinecap="round" />
+  </svg>
+)
+
+/** App icon: the signed iconUrl, falling back to the glyph on a 404/broken
+ *  image (so a bad URL never renders a torn-image placeholder). */
+function AppIcon({ iconUrl }: { iconUrl?: string }): React.ReactElement {
+  const [failed, setFailed] = useState(false)
+  return (
+    <span className="app-ic">
+      {failed || !iconUrl ? (
+        <AppGlyph />
+      ) : (
+        <img src={iconUrl} alt="" onError={() => setFailed(true)} />
+      )}
+    </span>
   )
 }
 
@@ -336,16 +359,7 @@ function AppCard({ descriptor }: { descriptor: AppDescriptor }): React.ReactElem
   return (
     <div className={`app${open ? ' open' : ''}`}>
       <div className="app-hd" onClick={() => setOpen((v) => !v)}>
-        <span className="app-ic">
-          {descriptor.iconUrl ? (
-            <img src={descriptor.iconUrl} alt="" />
-          ) : (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}>
-              <rect x="4" y="4" width="16" height="16" rx="4" />
-              <path d="M8 12h8M12 8v8" strokeLinecap="round" />
-            </svg>
-          )}
-        </span>
+        <AppIcon iconUrl={descriptor.iconUrl} />
         <span className="app-meta">
           <div className="app-name">{descriptor.title}</div>
           <div className="app-desc">{descriptor.description}</div>
@@ -445,6 +459,15 @@ function basename(p: string): string {
 
 export function Settings({ onClose }: { onClose: () => void }): React.ReactElement {
   const apps = useEngineStore((s) => s.apps)
+  // Esc closes the drawer (the scrim already closes on click). Full focus-trap
+  // is deferred — Esc + scrim is enough this pass.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
   return (
     <>
       <div className="scrim" onClick={onClose} />

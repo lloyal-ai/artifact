@@ -40,11 +40,9 @@ input { font-family: inherit; }
 .hdr { flex: none; height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 26px; backdrop-filter: blur(18px); background: linear-gradient(180deg, rgba(15, 18, 26, 0.8), rgba(13, 16, 23, 0.35)); position: relative; z-index: 10; -webkit-app-region: drag; }
 .hdr button, .hdr .modesw { -webkit-app-region: no-drag; }
 .hdr::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--line), transparent); }
-.wsbtn { display: flex; align-items: center; gap: 9px; padding: 6px 9px 6px 7px; border-radius: 11px; transition: 0.15s; }
-.wsbtn:hover { background: var(--bg-2); }
+.wsbtn { display: flex; align-items: center; gap: 9px; padding: 6px 9px 6px 7px; border-radius: 11px; }
 .wsbtn .glyph { width: 29px; height: 29px; border-radius: 9px; background: conic-gradient(from 210deg, #34d399, #059669, #34d399); display: grid; place-items: center; color: #042018; font-weight: 800; font-size: 13px; box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.25), 0 4px 16px rgba(52, 211, 153, 0.25); }
 .wsbtn .nm { font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
-.wsbtn .ch { color: var(--ink-4); }
 .hcrumb { color: var(--ink-3); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34ch; }
 .hcrumb b { color: var(--ink-2); font-weight: 550; }
 .hspace { flex: 1; }
@@ -159,7 +157,6 @@ input { font-family: inherit; }
 .chev { color: var(--ink-4); transition: 0.2s; flex: none; width: 15px; height: 15px; }
 .card.open .chev { transform: rotate(180deg); }
 /* reusable icon components carry no inline size — constrain per context */
-.wsbtn .ch { width: 13px; height: 13px; }
 .hpill svg { width: 13px; height: 13px; }
 .iconbtn svg { width: 16px; height: 16px; }
 .cinner .send svg { width: 16px; height: 16px; }

@@ -1,7 +1,7 @@
 import React from 'react'
 import type { AppState } from '../../tui-ink/state'
 import { dispatch } from '../bridge'
-import { IconChevron, IconList, IconSearch, IconSettings } from '../icons'
+import { IconSearch, IconSettings } from '../icons'
 import { Gauge } from './Gauge'
 
 export function Header({
@@ -17,11 +17,10 @@ export function Header({
   }
   return (
     <div className="hdr">
-      <button className="wsbtn">
+      <div className="wsbtn brand">
         <span className="glyph">R</span>
         <span className="nm">reasoning.run</span>
-        <IconChevron className="ch" />
-      </button>
+      </div>
       {state.query && (
         <div className="hcrumb">
           <b>{state.query}</b>
@@ -52,12 +51,9 @@ export function Header({
         <b>Local</b>
       </div>
       <Gauge pct={state.pressure?.pct ?? 0} />
-      <button className="hpill">
+      <button className="hpill" onClick={onOpenSettings}>
         <IconSearch />
         <b>{state.sourceCount}</b>
-      </button>
-      <button className="iconbtn" title="Inspect raw trace">
-        <IconList />
       </button>
       <button className="iconbtn" title="Settings" onClick={onOpenSettings}>
         <IconSettings />
