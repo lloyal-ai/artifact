@@ -45,11 +45,28 @@ function poolDispatching(s: AppState): boolean {
   return false
 }
 
+/** How many research tasks have actually STARTED this run — distinct research
+ *  agents (live + finished snapshots), deduped and filtered to this run.
+ *  Mirrors Timeline's fan merge. Deep mode runs tasks sequentially, so a task
+ *  at index >= this frontier hasn't started yet and is QUEUED — regardless of
+ *  any finished agent whose `taskIndex` happens to collide with that row (which
+ *  is what was rendering a tick on queued deep-mode tasks). */
+function reachedTaskCount(s: AppState): number {
+  const ids = new Set<number>()
+  for (const id of s.researchAgentIds) if (s.agents.has(id)) ids.add(id)
+  for (const it of s.scrollback) {
+    if (it.kind === 'agent' && s.agents.has(it.agent.id)) ids.add(it.agent.id)
+  }
+  return ids.size
+}
+
 function taskStatus(
   s: AppState,
   taskIndex: number,
   dispatching: boolean,
 ): { status: TaskStatus; agent: AgentRuntime | null } {
+  // Queued: not yet reached by the (sequential, in deep mode) research frontier.
+  if (taskIndex >= reachedTaskCount(s)) return { status: 'pending', agent: null }
   const agent = agentForTask(s, taskIndex)
   if (!agent) return { status: 'pending', agent: null }
   if (agent.phase === 'done') return { status: 'done', agent }
