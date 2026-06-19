@@ -20,6 +20,7 @@
     "app:preview": "electron-vite preview",
     "pack": "npm run build && npm run app:build && electron-builder --dir",
     "dist": "npm run build && npm run app:build && electron-builder",
+    "release": "npm run dist && bash release.sh",
     "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --loader:.eta=text --outfile=dist/bundle.mjs --minify --legal-comments=none",
     "build:watch": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --loader:.eta=text --outfile=dist/bundle.mjs --watch",
     "start": "npm run build && node bin/run.js",

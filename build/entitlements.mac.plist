@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Hardened-runtime entitlements required to notarize an Electron app that
+       loads the native `@lloyal-labs/lloyal.node` addon (+ its sibling dylibs)
+       and runs Metal/V8. JIT + unsigned executable memory = V8/llama.cpp;
+       disable-library-validation = load the native addon's dylibs (signed by a
+       different/no identity) under the hardened runtime. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>
