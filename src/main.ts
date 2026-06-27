@@ -24,7 +24,7 @@ import {
   each,
   call,
 } from "effection";
-import type { Operation } from "effection";
+import type { Operation, Task } from "effection";
 import { createContext } from "@lloyal-labs/lloyal.node";
 import type { SessionContext } from "@lloyal-labs/sdk";
 import {
@@ -1069,6 +1069,60 @@ main(function* () {
         appFilter: readonly string[];
       } | null = null;
 
+      // ── Run-in-fiber (Stop escape hatch) ───────────────────────
+      // The heavy operations — runQuery (preflight recon + planner) and
+      // runResearchPlan (research + synth) — run in a CHILD fiber so the
+      // command loop below keeps polling `each(commands)` while a run is in
+      // flight. Without this the loop blocks on `yield* runResearchPlan(...)`
+      // and can't even RECEIVE a `stop` command. The active run's Task is held
+      // here; `stop` halts it (Effection halt tears down the run scope and
+      // cancels any parked tool fetch via cancellable-fetch's scope-signal).
+      // Only ONE run is active at a time (the UI gates submit/accept by phase),
+      // so a single ref suffices.
+      let runTask: Task<void> | null = null;
+
+      // Spawn a run as a child fiber and hold its Task. The body OWNS its own
+      // result-handling + event-sending (it can't return a value to the loop
+      // without re-blocking it), so each call site passes a self-contained
+      // operation. On natural completion the body clears `runTask` itself (via
+      // the `clearIfCurrent` it's handed) so a finished run leaves no stale ref
+      // for a later `stop` to halt. A run that throws is caught by the loop's
+      // try/catch around `yield* runTask` — but we DON'T await it here; instead
+      // each body wraps its own work so a failure surfaces as a `ui:error`
+      // toast + return-to-composer, exactly like the old inline path's catch.
+      function* startRun(
+        body: (clearIfCurrent: () => void) => Operation<void>,
+      ): Operation<void> {
+        // A run shouldn't start while one is active; callers halt the prior run
+        // first (new-query-while-running = halt-old-then-start-new). Guard
+        // defensively so a double-start can't orphan the previous Task.
+        if (runTask) yield* haltRun();
+        const task = yield* spawn(() =>
+          body(() => {
+            // Clear only if WE are still the current run — a `stop`/new-run may
+            // have already replaced `runTask` and halted us.
+            if (runTask === task) runTask = null;
+          }),
+        );
+        runTask = task;
+      }
+
+      // Halt the active run (if any) and clear the ref. Wrapped so a teardown
+      // error can NEVER escape into the command loop and tear down the process
+      // — halting must leave the app alive for the next query. `halt()` resolves
+      // only after the run scope's teardown (reranker leases released, parked
+      // fetches aborted) completes.
+      function* haltRun(): Operation<void> {
+        const task = runTask;
+        runTask = null;
+        if (!task) return;
+        try {
+          yield* task.halt();
+        } catch {
+          /* teardown-only error — the run is gone regardless */
+        }
+      }
+
       // Per-query App participation. Tracks which enabled apps the user
       // included in the next query. Mirrored to the UI reducer via the
       // `participation:toggled` event; the source of truth lives here
@@ -1143,6 +1197,24 @@ main(function* () {
       for (const cmd of yield* each(commands)) {
         try {
           if (cmd.type === "quit") return "quit";
+
+          if (cmd.type === "stop") {
+            // Escape hatch: interrupt the in-flight run and return to the
+            // composer. If no run is active, no-op (the UI only shows Stop
+            // while a run is in flight, but a late/duplicate stop is harmless).
+            // halt() tears down the run scope — the research pool, its agent
+            // fibers, and any parked tool fetch (cancellable-fetch aborts on
+            // its scope-signal) — WITHOUT killing this command loop or the
+            // process: the app stays warm for the next query. Streamed partials
+            // (scrollback / synth.buffer / agent timelines) are preserved;
+            // ui:composer only resets the phase, never the transcript.
+            if (runTask) {
+              yield* haltRun();
+              pendingPlan = null;
+              yield* events.send({ type: "ui:composer" });
+            }
+            continue;
+          }
 
           if (cmd.type === "set_model_path") {
             // Composer only mounts in 'composer' phase, so no agent is in
@@ -1294,6 +1366,14 @@ main(function* () {
               continue;
             }
             const wallStartMs = performance.now();
+            // A `submit_query` while a run is already in flight = the user
+            // started over. Halt the old run first, then start the new (the
+            // safe choice — never two concurrent research pools sharing the
+            // session). Plan-edit state from the prior query is stale; drop it.
+            if (runTask) {
+              yield* haltRun();
+              pendingPlan = null;
+            }
             if (cmd.skipPlanner) {
               // START path: skip the planner entirely. The user's literal
               // query becomes a single research task. The synth gate inside
@@ -1320,57 +1400,88 @@ main(function* () {
               });
               const submissionFilter = currentAppFilter();
               startRunDir(cmd.query, cmd.mode);
-              yield* runResearchPlan(cmd.query, plan, session, {
-                ...harnessOpts,
-                reasoningMode: cmd.mode,
-                wallStartMs,
-                appFilter: submissionFilter,
+              // Run in a child fiber so `stop` can interrupt it (see startRun).
+              yield* startRun(function* (clearIfCurrent) {
+                try {
+                  yield* runResearchPlan(cmd.query, plan, session, {
+                    ...harnessOpts,
+                    reasoningMode: cmd.mode,
+                    wallStartMs,
+                    appFilter: submissionFilter,
+                  });
+                  yield* events.send({ type: "ui:composer" });
+                } catch (err) {
+                  yield* events.send({
+                    type: "ui:error",
+                    message: errorMessage(err),
+                  });
+                } finally {
+                  clearIfCurrent();
+                }
               });
-              yield* events.send({ type: "ui:composer" });
               continue;
             }
             const submissionFilter = currentAppFilter();
-            const result = yield* runQuery(cmd.query, session, {
-              ...harnessOpts,
-              reasoningMode: cmd.mode,
-              context: buildPlannerContext(registry.enabled()),
-              wallStartMs,
-              appFilter: submissionFilter,
-              onStart: () => startRunDir(cmd.query, cmd.mode),
+            const queryText = cmd.query;
+            const queryMode = cmd.mode;
+            // Run the planner (preflight recon + planner agent) in a child fiber
+            // so it's interruptible too — recon can take seconds. The body owns
+            // its own result-handling (sets pendingPlan / commits the clarify
+            // turn / sends ui:plan_review) since it can't return to the loop
+            // without re-blocking it.
+            yield* startRun(function* (clearIfCurrent) {
+              try {
+                const result = yield* runQuery(queryText, session, {
+                  ...harnessOpts,
+                  reasoningMode: queryMode,
+                  context: buildPlannerContext(registry.enabled()),
+                  wallStartMs,
+                  appFilter: submissionFilter,
+                  onStart: () => startRunDir(queryText, queryMode),
+                });
+                if (result.type === "research_plan") {
+                  pendingPlan = {
+                    plan: result.plan,
+                    query: queryText,
+                    clarifyExchanged: false,
+                    mode: queryMode,
+                    wallStartMs,
+                    appFilter: submissionFilter,
+                  };
+                  yield* events.send({ type: "ui:plan_review" });
+                } else if (result.type === "clarify") {
+                  // First-round clarify: atomic (query, formattedQs) commit
+                  // bootstraps the trunk via the cold path. Subsequent rounds
+                  // use prefillUser/prefillAssistant split-half so the user's
+                  // answer is in trunk BEFORE the next planner fork.
+                  yield* call(() =>
+                    session.commitTurn(
+                      queryText,
+                      formatClarifyAsAssistantMsg(result.plan.clarifyQuestions),
+                    ),
+                  );
+                  pendingPlan = {
+                    plan: result.plan,
+                    query: queryText,
+                    clarifyExchanged: false,
+                    mode: queryMode,
+                    wallStartMs,
+                    appFilter: submissionFilter,
+                  };
+                  // Stays in clarifying via the plan event.
+                } else {
+                  yield* events.send({ type: "ui:composer" });
+                }
+              } catch (err) {
+                pendingPlan = null;
+                yield* events.send({
+                  type: "ui:error",
+                  message: errorMessage(err),
+                });
+              } finally {
+                clearIfCurrent();
+              }
             });
-            if (result.type === "research_plan") {
-              pendingPlan = {
-                plan: result.plan,
-                query: cmd.query,
-                clarifyExchanged: false,
-                mode: cmd.mode,
-                wallStartMs,
-                appFilter: submissionFilter,
-              };
-              yield* events.send({ type: "ui:plan_review" });
-            } else if (result.type === "clarify") {
-              // First-round clarify: atomic (query, formattedQs) commit
-              // bootstraps the trunk via the cold path. Subsequent rounds
-              // use prefillUser/prefillAssistant split-half so the user's
-              // answer is in trunk BEFORE the next planner fork.
-              yield* call(() =>
-                session.commitTurn(
-                  cmd.query,
-                  formatClarifyAsAssistantMsg(result.plan.clarifyQuestions),
-                ),
-              );
-              pendingPlan = {
-                plan: result.plan,
-                query: cmd.query,
-                clarifyExchanged: false,
-                mode: cmd.mode,
-                wallStartMs,
-                appFilter: submissionFilter,
-              };
-              // Stays in clarifying via the plan event.
-            } else {
-              yield* events.send({ type: "ui:composer" });
-            }
           } else if (cmd.type === "submit_clarification" && pendingPlan) {
             // Q1.5: prefill the user's answer onto the trunk BEFORE running
             // the planner so the planner's fork inherits the answer via KV.
@@ -1387,64 +1498,91 @@ main(function* () {
             //                   findings arrive (gated by clarifyExchanged)
             //     - done     → passthrough handles its own commits
             const { query: origQuery, mode, wallStartMs, appFilter } = pendingPlan;
+            const priorPlan = pendingPlan;
             yield* call(() => session.prefillUser(cmd.answer));
-            const result = yield* runQuery(origQuery, session, {
-              ...harnessOpts,
-              reasoningMode: mode,
-              context: buildPlannerContext(registry.enabled()),
-              wallStartMs,
-              appFilter,
-              onStart: () => startRunDir(origQuery, mode),
+            yield* startRun(function* (clearIfCurrent) {
+              try {
+                const result = yield* runQuery(origQuery, session, {
+                  ...harnessOpts,
+                  reasoningMode: mode,
+                  context: buildPlannerContext(registry.enabled()),
+                  wallStartMs,
+                  appFilter,
+                  onStart: () => startRunDir(origQuery, mode),
+                });
+                if (result.type === "research_plan") {
+                  pendingPlan = {
+                    ...priorPlan,
+                    plan: result.plan,
+                    clarifyExchanged: true,
+                  };
+                  yield* events.send({ type: "ui:plan_review" });
+                } else if (result.type === "clarify") {
+                  yield* call(() =>
+                    session.prefillAssistant(
+                      formatClarifyAsAssistantMsg(result.plan.clarifyQuestions),
+                    ),
+                  );
+                  pendingPlan = {
+                    ...priorPlan,
+                    plan: result.plan,
+                    clarifyExchanged: true,
+                  };
+                } else {
+                  pendingPlan = null;
+                  yield* events.send({ type: "ui:composer" });
+                }
+              } catch (err) {
+                pendingPlan = null;
+                yield* events.send({
+                  type: "ui:error",
+                  message: errorMessage(err),
+                });
+              } finally {
+                clearIfCurrent();
+              }
             });
-            if (result.type === "research_plan") {
-              pendingPlan = {
-                ...pendingPlan,
-                plan: result.plan,
-                clarifyExchanged: true,
-              };
-              yield* events.send({ type: "ui:plan_review" });
-            } else if (result.type === "clarify") {
-              yield* call(() =>
-                session.prefillAssistant(
-                  formatClarifyAsAssistantMsg(result.plan.clarifyQuestions),
-                ),
-              );
-              pendingPlan = {
-                ...pendingPlan,
-                plan: result.plan,
-                clarifyExchanged: true,
-              };
-            } else {
-              pendingPlan = null;
-              yield* events.send({ type: "ui:composer" });
-            }
           } else if (cmd.type === "change_mode" && pendingPlan) {
-            const result = yield* runQuery(pendingPlan.query, session, {
-              ...harnessOpts,
-              reasoningMode: cmd.mode,
-              context: buildPlannerContext(registry.enabled()),
-              wallStartMs: pendingPlan.wallStartMs,
-              appFilter: pendingPlan.appFilter,
-              onStart: () => startRunDir(pendingPlan!.query, cmd.mode),
+            const priorPlan = pendingPlan;
+            const nextMode = cmd.mode;
+            yield* startRun(function* (clearIfCurrent) {
+              try {
+                const result = yield* runQuery(priorPlan.query, session, {
+                  ...harnessOpts,
+                  reasoningMode: nextMode,
+                  context: buildPlannerContext(registry.enabled()),
+                  wallStartMs: priorPlan.wallStartMs,
+                  appFilter: priorPlan.appFilter,
+                  onStart: () => startRunDir(priorPlan.query, nextMode),
+                });
+                if (result.type === "research_plan") {
+                  pendingPlan = { ...priorPlan, plan: result.plan, mode: nextMode };
+                  yield* events.send({ type: "ui:plan_review" });
+                } else if (result.type === "clarify") {
+                  // change_mode is a non-conversational re-plan: the user toggled
+                  // mode without saying anything new. We DO NOT commit the new
+                  // clarify Qs to trunk — the trunk's last assistant turn stays
+                  // the prior round's Qs. The UI shows the new Qs from pendingPlan,
+                  // and the user's eventual answer (via submit_clarification) will
+                  // prefill onto trunk then. Documented edge: planner #N+1 forks
+                  // a trunk that holds clarify_Qs_{prior} in KV while the user
+                  // answered clarify_Qs_{change_mode_round}; we accept this minor
+                  // KV/UI mismatch rather than forge a synthetic user turn.
+                  pendingPlan = { ...priorPlan, plan: result.plan, mode: nextMode };
+                } else {
+                  pendingPlan = null;
+                  yield* events.send({ type: "ui:composer" });
+                }
+              } catch (err) {
+                pendingPlan = null;
+                yield* events.send({
+                  type: "ui:error",
+                  message: errorMessage(err),
+                });
+              } finally {
+                clearIfCurrent();
+              }
             });
-            if (result.type === "research_plan") {
-              pendingPlan = { ...pendingPlan, plan: result.plan, mode: cmd.mode };
-              yield* events.send({ type: "ui:plan_review" });
-            } else if (result.type === "clarify") {
-              // change_mode is a non-conversational re-plan: the user toggled
-              // mode without saying anything new. We DO NOT commit the new
-              // clarify Qs to trunk — the trunk's last assistant turn stays
-              // the prior round's Qs. The UI shows the new Qs from pendingPlan,
-              // and the user's eventual answer (via submit_clarification) will
-              // prefill onto trunk then. Documented edge: planner #N+1 forks
-              // a trunk that holds clarify_Qs_{prior} in KV while the user
-              // answered clarify_Qs_{change_mode_round}; we accept this minor
-              // KV/UI mismatch rather than forge a synthetic user turn.
-              pendingPlan = { ...pendingPlan, plan: result.plan, mode: cmd.mode };
-            } else {
-              pendingPlan = null;
-              yield* events.send({ type: "ui:composer" });
-            }
           } else if (cmd.type === "accept_plan" && pendingPlan) {
             if (pendingPlan.plan.intent === "clarify") {
               pendingPlan = null;
@@ -1460,24 +1598,40 @@ main(function* () {
               continue;
             }
             startRunDir(pendingPlan.query, pendingPlan.mode);
-            yield* runResearchPlan(
-              pendingPlan.query,
-              pendingPlan.plan,
-              session,
-              {
-                ...harnessOpts,
-                reasoningMode: pendingPlan.mode,
-                wallStartMs: pendingPlan.wallStartMs,
-                appFilter: pendingPlan.appFilter,
-                // Q1.5: if a clarify round prefilled the user's answer onto
-                // trunk, runResearchPlan closes the dangling pair via
-                // prefillAssistant. Otherwise (no clarify), it bootstraps the
-                // pair via commitTurn(query, answer).
-                userSidePending: pendingPlan.clarifyExchanged,
-              },
-            );
+            // Snapshot the plan; the loop clears `pendingPlan` immediately so a
+            // stray plan-edit command during the run can't mutate the running
+            // plan. The heavy research+synth runs in a child fiber so `stop`
+            // can halt it (the primary thing Stop interrupts).
+            const acceptedPlan = pendingPlan;
             pendingPlan = null;
-            yield* events.send({ type: "ui:composer" });
+            yield* startRun(function* (clearIfCurrent) {
+              try {
+                yield* runResearchPlan(
+                  acceptedPlan.query,
+                  acceptedPlan.plan,
+                  session,
+                  {
+                    ...harnessOpts,
+                    reasoningMode: acceptedPlan.mode,
+                    wallStartMs: acceptedPlan.wallStartMs,
+                    appFilter: acceptedPlan.appFilter,
+                    // Q1.5: if a clarify round prefilled the user's answer onto
+                    // trunk, runResearchPlan closes the dangling pair via
+                    // prefillAssistant. Otherwise (no clarify), it bootstraps
+                    // the pair via commitTurn(query, answer).
+                    userSidePending: acceptedPlan.clarifyExchanged,
+                  },
+                );
+                yield* events.send({ type: "ui:composer" });
+              } catch (err) {
+                yield* events.send({
+                  type: "ui:error",
+                  message: errorMessage(err),
+                });
+              } finally {
+                clearIfCurrent();
+              }
+            });
           } else if (cmd.type === "cancel_plan") {
             pendingPlan = null;
             yield* events.send({ type: "ui:composer" });

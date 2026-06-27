@@ -904,6 +904,30 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
         }));
       }
 
+      // Terminal `report` tool: this fires at the stop token, but the report
+      // already streamed live as a "Writing report" row (the model's report
+      // body flowed into `contentBuffer` during the content phase — see the
+      // marker extractor in Work.tsx). Pushing a generic tool_call row here
+      // would render a misleading "Reading" timeline entry; instead just
+      // advance phase/counts and clear the streamed buffer. `agent:return`
+      // finalizes the report into a structured `report` item next.
+      // Detection: the agent was mid-report stream iff its `contentBuffer`
+      // (raw post-</think> tokens, not yet cleared) already holds the report
+      // open marker. Belt-and-suspenders on the terminal tool name, which in
+      // reasoning.run's own UI is always `report`.
+      const acting = working.agents.get(ev.agentId);
+      const wasReporting =
+        ev.tool === 'report' ||
+        (acting?.contentBuffer.includes('<parameter=result>') ?? false);
+      if (wasReporting) {
+        return replaceAgent(working, ev.agentId, (a) => ({
+          ...a,
+          phase: 'tool',
+          toolCallCount: a.toolCallCount + 1,
+          contentBuffer: '',
+        }));
+      }
+
       const id = working.nextTimelineId;
       const next = replaceAgent(working, ev.agentId, (a) =>
         pushTimeline(
@@ -1060,6 +1084,9 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
       return replaceAgent(working, ev.agentId, (a) => ({
         ...a,
         phase: 'idle',
+        // Drop any partial content buffer: if the agent is being force-recovered
+        // it never closed the terminal call, so recovery prose (refilled into
+        // contentBuffer while `recovering`) drives the "Writing report" row now.
         contentBuffer: '',
         recovering: true,
       }));

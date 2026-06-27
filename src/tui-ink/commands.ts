@@ -25,4 +25,10 @@ export type Command =
   | { type: 'set_model_path'; path: string }
   | { type: 'set_reranker_path'; path: string }
   | { type: 'toggle_participation'; name: string }
+  // Escape hatch: interrupt the in-flight run (planner / research / synth) and
+  // return to the composer. Handled in main.ts's command loop by halting the
+  // spawned run Task (Effection halt tears down the run scope + cancels any
+  // parked tool fetch via cancellable-fetch's scope-signal) and sending
+  // `ui:composer`. No-op when no run is active. Never kills the loop/process.
+  | { type: 'stop' }
   | { type: 'quit' };

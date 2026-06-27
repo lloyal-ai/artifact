@@ -127,8 +127,12 @@ export interface AgentRuntime {
   retry: { tool: string; retryAt: number; attempt: number } | null;
   /** Live post-</think> token buffer. Tokens stream into this between
    *  closing a think block and the next agent:tool_call / agent:report
-   *  (the model is writing tool-call JSON — report body lives inside).
-   *  Cleared on tool_call / report (those fire structured items instead). */
+   *  (the model is writing tool-call JSON — the terminal `report` tool's body
+   *  lives inside that JSON, between `<parameter=result>` and `</parameter>`,
+   *  raw and unescaped). The "Writing report" row extracts the live report body
+   *  straight from this buffer (see extractStreamingReport in Work.tsx) — same
+   *  marker-delimited technique the think block uses with `</think>`. Cleared
+   *  on tool_call / report (those fire structured items instead). */
   contentBuffer: string;
   /** True while the agent is being force-recovered: `agent:done` fired (the
    *  agent stalled without a voluntary report) and `recoverInline` is streaming

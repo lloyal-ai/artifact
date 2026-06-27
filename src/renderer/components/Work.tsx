@@ -41,44 +41,18 @@ export function extractReportBody(body: string): string {
   return body
 }
 
-/**
- * Decode a PARTIAL report-tool JSON stream for live display. The model streams
- * `{"result":"## …with escaped \n…"}` token-by-token, so a full `JSON.parse`
- * fails mid-stream. Locate the `result` string value and decode its escapes up
- * to the (not-yet-arrived) closing quote, so the streaming report renders as
- * clean markdown instead of raw escaped JSON. Stops at an incomplete escape at
- * the tail (waits for the next token). Returns null when the buffer isn't yet a
- * recognizable report — the caller then shows the raw text.
- */
-const ESCAPES: Record<string, string> = {
-  n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/',
-}
+/** Live report markdown from a raw Hermes terminal-tool buffer:
+ *  `…<parameter=result>\n<markdown>\n</parameter>…`. Raw <parameter> values are
+ *  unescaped, so no decoding — same idea as streaming a think block until </think>.
+ *  Returns the body (to the close marker, or buffer tail if not arrived), or null. */
 export function extractStreamingReport(buffer: string): string | null {
-  const m = /"result"\s*:\s*"/.exec(buffer)
-  if (!m) return null
-  let i = m.index + m[0].length
-  let out = ''
-  while (i < buffer.length) {
-    const ch = buffer[i]
-    if (ch === '"') break // unescaped closing quote → end of the result string
-    if (ch === '\\') {
-      const next = buffer[i + 1]
-      if (next === undefined) break // incomplete escape at the stream tail
-      if (next === 'u') {
-        const hex = buffer.slice(i + 2, i + 6)
-        if (hex.length < 4) break // incomplete \uXXXX — wait for more tokens
-        out += String.fromCharCode(parseInt(hex, 16))
-        i += 6
-        continue
-      }
-      out += ESCAPES[next] ?? next
-      i += 2
-      continue
-    }
-    out += ch
-    i += 1
-  }
-  return out
+  const OPEN = '<parameter=result>'
+  const i = buffer.indexOf(OPEN)
+  if (i === -1) return null
+  let body = buffer.slice(i + OPEN.length)
+  const c = body.indexOf('</parameter>')
+  if (c !== -1) body = body.slice(0, c)
+  return body.replace(/^\n/, '')
 }
 
 /** A think row — collapsed by default (think bodies can be huge when thinking
@@ -151,24 +125,18 @@ function ReportRow({
   )
 }
 
-/** Live "Writing report" — the model is streaming the report into
- *  `contentBuffer` (post-</think>, pre-report-item). Two sources feed this:
- *   · voluntary `report` tool — `contentBuffer` holds the tool-call JSON, so
- *     decode the `"result":"…"` value out of it (`extractStreamingReport`).
+/** Live "Writing report" — the model is streaming the report body. Two sources
+ *  feed this, both raw markdown by the time they reach here:
+ *   · voluntary `report` tool — the model emits the terminal call as Hermes XML;
+ *     the report body is the raw, unescaped markdown between `<parameter=result>`
+ *     and `</parameter>` in `agent.contentBuffer`. `extractStreamingReport`
+ *     pulls it out by marker — same idea as streaming a think block to `</think>`.
  *   · recovery (`recoverInline`) — the EAGER report grammar emits raw report
- *     prose (no JSON envelope), so the buffer IS the report; render it directly.
- *  Without the recovery branch the prose has no `"result":"` key, so the JSON
- *  decode returns null and the stream renders invisibly while tokens climb.
- *  Collapsed by default; expanding shows the live markdown. */
-function WritingReportRow({
-  buffer,
-  recovering,
-}: {
-  buffer: string
-  recovering: boolean
-}): React.ReactElement {
+ *     prose (no envelope), so `agent.contentBuffer` IS the report.
+ *  The caller resolves which source to pass as `report`; this row just renders
+ *  it. Collapsed by default; expanding shows the live markdown. */
+function WritingReportRow({ report }: { report: string }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
-  const report = recovering ? buffer : extractStreamingReport(buffer)
   return (
     <div className="wrow live">
       <span className="wic">
@@ -183,18 +151,12 @@ function WritingReportRow({
           </span>
           <IconChevron className={`wchev ${open ? 'open' : ''}`} />
         </button>
-        {open &&
-          (report ? (
-            <div className="wreport md">
-              <Markdown text={report} />
-              <span className="caret" />
-            </div>
-          ) : (
-            <div className="wstream">
-              {buffer}
-              <span className="caret" />
-            </div>
-          ))}
+        {open && (
+          <div className="wreport md">
+            <Markdown text={report} />
+            <span className="caret" />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -246,28 +208,22 @@ export function WorkRows({ agent }: { agent: AgentRuntime }): React.ReactElement
   }
 
   // Live report writing — the model is streaming the report before the
-  // structured report item lands. Two cases:
+  // structured report item lands. Two cases, each raw markdown:
   //  · recovery (`agent.recovering`): `recoverInline`'s EAGER report grammar
-  //    streams raw report prose into contentBuffer. This is the COMMON path
-  //    (the model rarely calls the report tool voluntarily), so it MUST render
-  //    or the answer streams invisibly behind a climbing token count.
-  //  · voluntary report: the `content` phase streams the JSON of EVERY tool
-  //    call (search/read args too), not just the terminal report — so gate on
-  //    the report shape (`extractStreamingReport` non-null only once the
-  //    buffer carries the report tool's `"result":"…"` value). Without that
-  //    gate every search/read call briefly flashed a mislabeled "Writing
-  //    report" row. Recovery is never the `content` phase, so it can't reintroduce that flash.
-  if (
-    agent.contentBuffer.trim() &&
-    (agent.recovering || extractStreamingReport(agent.contentBuffer) !== null)
-  ) {
-    rows.push(
-      <WritingReportRow
-        buffer={agent.contentBuffer}
-        recovering={agent.recovering}
-        key="writing-report"
-      />,
-    )
+  //    streams raw report prose into `contentBuffer` (no envelope). The COMMON
+  //    path — the model rarely calls the report tool voluntarily — so it MUST
+  //    render or the answer streams invisibly behind a climbing token count.
+  //  · voluntary report: the model writes the terminal call as Hermes XML into
+  //    `contentBuffer`; `extractStreamingReport` pulls the body out by the
+  //    `<parameter=result>` marker (returns null until that marker arrives).
+  //    Marker-gating means non-terminal search/read calls — whose args also
+  //    flow through the content phase but never carry that marker — never flash
+  //    a mislabeled "Writing report" row.
+  const liveReport = agent.recovering
+    ? agent.contentBuffer
+    : extractStreamingReport(agent.contentBuffer)
+  if (liveReport && liveReport.trim()) {
+    rows.push(<WritingReportRow report={liveReport} key="writing-report" />)
   }
 
   return <div className="work">{rows}</div>

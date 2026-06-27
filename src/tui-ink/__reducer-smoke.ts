@@ -9,6 +9,7 @@ import assert from 'node:assert';
 import { reduce } from './reducer';
 import { initialState } from './state';
 import type { WorkflowEvent } from './events';
+import { extractStreamingReport } from '../renderer/components/Work';
 
 function drive(events: WorkflowEvent[]) {
   return events.reduce(reduce, initialState);
@@ -498,6 +499,123 @@ check('report path: content streams, then report event clears buffer + pushes st
   assert.equal((last as { body: string }).body, 'The final answer is X.');
 });
 
+// ── Live terminal-report streaming (marker-based, off the raw agent:produce
+// ── stream — same technique the think block uses with </think>) ────────
+function reportStreamSeed(): WorkflowEvent[] {
+  return [
+    { type: 'query', query: 'q', warm: false },
+    {
+      type: 'plan',
+      intent: 'research',
+      tasks: [{ description: 'A' }] as never,
+      clarifyQuestions: [],
+      tokenCount: 1,
+      timeMs: 1,
+    },
+    { type: 'research:start', agentCount: 1, mode: 'flat' },
+    { type: 'agent:spawn', agentId: 1, parentAgentId: 0 } as WorkflowEvent,
+  ];
+}
+
+check('terminal report streams into contentBuffer; extractStreamingReport yields progressive markdown', () => {
+  // The model emits the terminal call as Hermes XML. After </think> closes,
+  // the raw tokens (incl. the report body inside <parameter=result>) flow into
+  // contentBuffer. The "Writing report" row reads it via extractStreamingReport
+  // — no parser, no agent:reportDelta, no isPartial.
+  const s = drive([
+    ...reportStreamSeed(),
+    {
+      type: 'agent:produce',
+      agentId: 1,
+      text: 'decided to report</think>\n\n<tool_call>\n<function=report>\n<parameter=result>\n**Partial report',
+      tokenCount: 3,
+    } as WorkflowEvent,
+    { type: 'agent:produce', agentId: 1, text: ' — findings so far', tokenCount: 4 } as WorkflowEvent,
+  ]);
+  const a = s.agents.get(1)!;
+  assert.equal(a.phase, 'content');
+  // Raw buffer holds the post-</think> XML, marker and all.
+  assert.match(a.contentBuffer, /<parameter=result>/);
+  assert.match(a.contentBuffer, /\*\*Partial report — findings so far/);
+  // The extractor returns just the report body (open marker stripped, leading \n trimmed).
+  assert.equal(extractStreamingReport(a.contentBuffer), '**Partial report — findings so far');
+});
+
+check('extractStreamingReport stops at </parameter> once the close marker arrives', () => {
+  const s = drive([
+    ...reportStreamSeed(),
+    {
+      type: 'agent:produce',
+      agentId: 1,
+      text: 'go</think>\n\n<tool_call>\n<function=report>\n<parameter=result>\n**Done report',
+      tokenCount: 3,
+    } as WorkflowEvent,
+    { type: 'agent:produce', agentId: 1, text: '\n</parameter>\n</function>\n</tool_call>', tokenCount: 4 } as WorkflowEvent,
+  ]);
+  const a = s.agents.get(1)!;
+  // Body is clipped at the close marker — the </function></tool_call> tail is
+  // excluded. The raw body ends in the model's own trailing newline (the
+  // extractor strips only the leading \n; trailing whitespace is the body's,
+  // and the render gate .trim()s it).
+  assert.equal(extractStreamingReport(a.contentBuffer), '**Done report\n');
+  // Critically: the close marker and everything after it are gone.
+  assert.ok(!extractStreamingReport(a.contentBuffer)!.includes('</parameter>'));
+  assert.ok(!extractStreamingReport(a.contentBuffer)!.includes('</tool_call>'));
+});
+
+check('terminal report agent:tool_call pushes NO generic "Reading" timeline row', () => {
+  // The report already streamed live via contentBuffer; the terminal
+  // agent:tool_call at the stop token must NOT add a generic tool_call row
+  // (which WorkRows would label "Reading"). agent:return finalizes the report.
+  const s = drive([
+    ...reportStreamSeed(),
+    {
+      type: 'agent:produce',
+      agentId: 1,
+      text: 'go</think>\n\n<tool_call>\n<function=report>\n<parameter=result>\n**Report body',
+      tokenCount: 3,
+    } as WorkflowEvent,
+    { type: 'agent:tool_call', agentId: 1, tool: 'report', args: '{"result":"**Report body"}' } as WorkflowEvent,
+  ]);
+  const a = s.agents.get(1)!;
+  // No tool_call row at all — only the (closed) think item is on the timeline.
+  assert.equal(a.timeline.filter((it) => it.kind === 'tool_call').length, 0);
+  assert.equal(a.phase, 'tool');
+  // contentBuffer cleared by the terminal tool_call (the live row is done; the
+  // structured report item lands on agent:return).
+  assert.equal(a.contentBuffer, '');
+
+  // agent:return then freezes the engine-parsed final body into a report item.
+  const s2 = reduce(s, { type: 'agent:return', agentId: 1, result: '**Report body**' } as WorkflowEvent);
+  const a2 = s2.agents.get(1)!;
+  assert.equal(a2.phase, 'done');
+  const last = a2.timeline[a2.timeline.length - 1];
+  assert.equal(last.kind, 'report');
+  assert.equal((last as { body: string }).body, '**Report body**');
+});
+
+check('non-terminal web_search tool_call/result still produces a paired "Searched ✓" row (no regression)', () => {
+  const s = drive([
+    ...reportStreamSeed(),
+    { type: 'agent:produce', agentId: 1, text: 'planning</think>', tokenCount: 3 } as WorkflowEvent,
+    { type: 'agent:tool_call', agentId: 1, tool: 'web_search', args: '{"query":"voice latency"}' } as WorkflowEvent,
+    {
+      type: 'agent:tool_result',
+      agentId: 1,
+      tool: 'web_search',
+      result: JSON.stringify([{ url: 'https://livekit.io/voice', title: 'Voice agent' }]),
+    } as WorkflowEvent,
+  ]);
+  const a = s.agents.get(1)!;
+  const call = a.timeline.find((it) => it.kind === 'tool_call') as { id: number; tool: string } | undefined;
+  const result = a.timeline.find((it) => it.kind === 'tool_result') as { callId: number; tool: string } | undefined;
+  assert.ok(call, 'web_search tool_call row present (not suppressed)');
+  assert.equal(call!.tool, 'web_search');
+  assert.ok(result, 'tool_result row present');
+  // Pairs with its call (WorkRows renders the verb + ✓ meta on one row → "Searched ✓").
+  assert.equal(result!.callId, call!.id);
+});
+
 check('agent:done marks recovering; the recovery stream routes to contentBuffer (not a think block)', () => {
   const s = drive([
     { type: 'query', query: 'q', warm: false },
@@ -900,6 +1018,52 @@ check('discovering → planning hand-off: query event clears recon agents', () =
   assert.equal(s.phase, 'plan');
   assert.deepEqual(s.reconAgentIds, []);
   assert.equal(s.agents.size, 0);
+});
+
+// ── Stop escape hatch ──────────────────────────────────────────
+// `stop` halts the run fiber engine-side and emits `ui:composer`. From the
+// renderer's view only `ui:composer` arrives, so this guards the reducer
+// invariant Stop relies on: ui:composer resets ONLY the phase, never the
+// streamed transcript (frozen agent panels in scrollback + the live synth
+// buffer + agent timelines all survive the return-to-composer).
+check('stop → ui:composer returns to composer, RETAINS scrollback + synth buffer + agents', () => {
+  const mid = drive([
+    { type: 'plan:start', query: 'q', mode: 'flat' } as WorkflowEvent,
+    {
+      type: 'plan',
+      intent: 'research',
+      tasks: [{ description: 't1' }] as never,
+      clarifyQuestions: [],
+      tokenCount: 10,
+      timeMs: 100,
+    },
+    // research:start sets phase=research so the spawned agent is a research
+    // agent and agent:return freezes its panel into scrollback.
+    { type: 'research:start', agentCount: 1, mode: 'flat' } as WorkflowEvent,
+    { type: 'agent:spawn', agentId: 1, parentAgentId: 0 } as WorkflowEvent,
+    { type: 'agent:produce', agentId: 1, text: 'finding</think>', tokenCount: 2 } as WorkflowEvent,
+    { type: 'agent:return', agentId: 1, result: '## A0 report' } as WorkflowEvent,
+    // Synth starts and streams a partial body, then the user STOPS — no
+    // synthesize:done arrives.
+    { type: 'synthesize:start' } as WorkflowEvent,
+    { type: 'agent:produce', agentId: 2, text: 'partial answer so far', tokenCount: 4 } as WorkflowEvent,
+  ]);
+  // Pre-stop snapshot: A0 frozen in scrollback, synth has a live partial.
+  assert.equal(mid.uiPhase, 'research');
+  assert.ok(mid.scrollback.length >= 1, 'expected the A0 agent panel in scrollback pre-stop');
+  assert.equal(mid.scrollback[0].kind, 'agent');
+  assert.ok(mid.synth.buffer.length > 0, 'expected a live synth buffer pre-stop');
+  const scrollbackBefore = mid.scrollback.length;
+  const synthBufBefore = mid.synth.buffer;
+  const agentsBefore = mid.agents.size;
+
+  // Stop → engine sends ui:composer.
+  const after = reduce(mid, { type: 'ui:composer' });
+  assert.equal(after.uiPhase, 'composer', 'ui:composer must reset uiPhase to composer');
+  assert.equal(after.scrollback.length, scrollbackBefore, 'stop must NOT clear scrollback');
+  assert.equal(after.synth.buffer, synthBufBefore, 'stop must NOT clear the synth buffer');
+  assert.equal(after.agents.size, agentsBefore, 'stop must NOT clear agent timelines');
+  assert.equal(after.query, 'q', 'prior query text survives for follow-up context');
 });
 
 process.stdout.write('---\n');
