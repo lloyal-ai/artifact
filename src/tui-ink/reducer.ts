@@ -266,6 +266,7 @@ function createAgent(state: AppState, id: number, patch: Partial<AgentRuntime> =
     retry: null,
     contentBuffer: '',
     recovering: false,
+    failReason: null,
     timeline: [],
     ...patch,
   };
@@ -1059,6 +1060,47 @@ export function reduce(state: AppState, ev: WorkflowEvent): AppState {
         scrollback,
         researchAgentIds,
       };
+    }
+
+    case 'agent:failed': {
+      // Forced recovery FAILED (no result — e.g. KV exhausted mid-report decode →
+      // `llama_decode failed`). The agent already showed "Writing report"
+      // (agent:done set `recovering`); without this it spins forever. Mark it
+      // terminally `failed` → cross glyph + frozen timer. There is no report.
+      const agent = state.agents.get(ev.agentId);
+      if (!agent || agent.phase === 'done' || agent.phase === 'failed') return state;
+      let working = state;
+      if (agent.currentThinkId !== null) {
+        const thinkItem = agent.timeline.find((it) => it.id === agent.currentThinkId);
+        const finalBody = thinkItem && thinkItem.kind === 'think' ? thinkItem.body : '';
+        working = closeThink(working, ev.agentId, finalBody);
+      }
+      const next = replaceAgent(working, ev.agentId, (a) => ({
+        ...a,
+        phase: 'failed',
+        endedAt: Date.now(),
+        contentBuffer: '',
+        recovering: false,
+        failReason: ev.reason,
+      }));
+      // Move it out of the live tree into scrollback (like a finished agent) so
+      // Narrative stops rendering it live — but with no `report` item.
+      const finalAgent = next.agents.get(ev.agentId);
+      const isResearch = next.researchAgentIds.includes(ev.agentId);
+      const scrollback = isResearch && finalAgent
+        ? [
+            ...next.scrollback,
+            {
+              key: `agent-${ev.agentId}-${next.scrollback.length}`,
+              kind: 'agent' as const,
+              agent: finalAgent,
+            },
+          ]
+        : next.scrollback;
+      const researchAgentIds = isResearch
+        ? next.researchAgentIds.filter((id) => id !== ev.agentId)
+        : next.researchAgentIds;
+      return { ...next, scrollback, researchAgentIds };
     }
 
     case 'agent:done': {

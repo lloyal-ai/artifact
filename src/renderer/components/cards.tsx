@@ -18,7 +18,7 @@ export const agentColor = (i: number): string => AGENT_COLORS[i % AGENT_COLORS.l
 // so the spinner never spins while generation is actually frozen) → done.
 // Agent-colored. Forward-compatible: when tool I/O fans out, `paused` splits
 // into fetching/running per agent — same component, richer derivation.
-type TaskStatus = 'pending' | 'running' | 'paused' | 'done'
+type TaskStatus = 'pending' | 'running' | 'paused' | 'done' | 'failed'
 
 /** The research agent bound to a task index — live (researchAgentIds) or its
  *  finished scrollback snapshot. Null before the task spawns. */
@@ -70,6 +70,7 @@ function taskStatus(
   const agent = agentForTask(s, taskIndex)
   if (!agent) return { status: 'pending', agent: null }
   if (agent.phase === 'done') return { status: 'done', agent }
+  if (agent.phase === 'failed') return { status: 'failed', agent }
   return { status: dispatching ? 'paused' : 'running', agent }
 }
 
@@ -98,13 +99,17 @@ const STATUS_TITLE: Record<TaskStatus, string> = {
   running: 'Running',
   paused: 'Paused — the tool result is decoding into the shared context before the next token',
   done: 'Done',
+  failed: 'Failed — the agent was cut off and its report could not be recovered (KV exhausted). Its findings were not included.',
 }
 
 /** Agent-colored status glyph: hollow ring (pending) · spinner (running) ·
  *  pause bars (paused) · tick (done). Color flows via `currentColor`. */
 function TaskStatusGlyph({ status, color }: { status: TaskStatus; color: string }): React.ReactElement {
+  // A failed task is not agent-branded — render its cross in the error hue so it
+  // reads as "this one died", not "this one's color".
+  const glyphColor = status === 'failed' ? '#e0686d' : color
   return (
-    <span className={`tstat ${status}`} style={{ color }} title={STATUS_TITLE[status]}>
+    <span className={`tstat ${status}`} style={{ color: glyphColor }} title={STATUS_TITLE[status]}>
       {status === 'pending' && <span className="tring" />}
       {status === 'running' && <span className="tspin" />}
       {status === 'paused' && (
@@ -116,6 +121,11 @@ function TaskStatusGlyph({ status, color }: { status: TaskStatus; color: string 
       {status === 'done' && (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
           <path d="M5 12l4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+      {status === 'failed' && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+          <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
     </span>
@@ -463,10 +473,12 @@ export function AgentCard({
   showFooter?: boolean
 }): React.ReactElement {
   const done = agent.phase === 'done'
-  // Done cards are collapsible (user-toggled); live cards follow the caller's
-  // `open` and never collapse mid-stream.
+  const failed = agent.phase === 'failed'
+  const terminal = done || failed
+  // Done/failed cards are collapsible (user-toggled); live cards follow the
+  // caller's `open` and never collapse mid-stream.
   const [expanded, setExpanded] = React.useState(false)
-  const showBody = done ? expanded : open
+  const showBody = terminal ? expanded : open
   const kc = agentColor(colorIdx)
 
   // Jump-to-agent: clicking a plan-card task row bumps focusNonce with this
@@ -478,14 +490,28 @@ export function AgentCard({
   const openDrawer = useUiNav((s) => s.openDrawer)
   // Run output dir (always set — main passes --output-dir) for "Open run folder".
   const runDir = useEngineStore((s) => s.config?.sources?.outputDir)
+  // Cancel affordance (flat mode only — chain agents feed the spine): a × on a LIVE,
+  // non-recovering card while >1 agent is still live (never cancel into an empty synth).
+  // Once agent:done fires (recovering = writing its report), there's nothing left to
+  // stop, so the × disappears — which is also exactly the window where the pool can't
+  // preempt anyway. `cancel_agent` halts the agent's tool + prunes its KV for siblings.
+  const mode = useEngineStore((s) => s.mode)
+  const liveCount = useEngineStore((s) => s.researchAgentIds.length)
+  const cancellable = !terminal && !agent.recovering && mode === 'flat' && liveCount > 1
   React.useEffect(() => {
     if (focusAgentId !== agent.id) return
-    if (done) setExpanded(true)
+    if (terminal) setExpanded(true)
     cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     // Re-fire only when a new focus request arrives (nonce), not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusNonce])
-  const pill = done ? (
+  const pill = failed ? (
+    agent.failReason === 'user_cancel' ? (
+      <span className="pill p-cancelled" title="Cancelled by you">✕ Cancelled</span>
+    ) : (
+      <span className="pill p-failed" title={agent.failReason ?? undefined}>✗ Recovery failed</span>
+    )
+  ) : done ? (
     <span className="pill p-done">✓ Report ready</span>
   ) : (
     <span className="pill p-live">
@@ -518,6 +544,18 @@ export function AgentCard({
             <span>{agent.tokenCount.toLocaleString()} tok</span>
           </span>
           {done && <IconChevron className={`chev ${expanded ? 'open' : ''}`} />}
+          {cancellable && (
+            <button
+              className="ccancel"
+              title="Cancel this agent — stop its research and free its budget for the others"
+              onClick={(e) => {
+                e.stopPropagation()
+                dispatch({ type: 'cancel_agent', agentId: agent.id })
+              }}
+            >
+              ✕
+            </button>
+          )}
         </div>
         {task && <div className="ctask">{task}</div>}
         {showBody && (

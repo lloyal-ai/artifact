@@ -34,6 +34,9 @@ export type ConfigApps = Record<string, Record<string, unknown>>;
 
 export interface ConfigDefaults {
   reasoningMode: 'flat' | 'deep';
+  /** Run effort preset — the session default for the composer's effort control
+   *  (pure policy: budget + planner breadth + recovery cap). @default 'high' */
+  effort: 'low' | 'medium' | 'high';
   maxTurns: number;
 }
 
@@ -102,6 +105,7 @@ function builtinDefaults(): Config {
     apps: {},
     defaults: {
       reasoningMode: 'flat',
+      effort: 'high',
       maxTurns: 10,
     },
     model: {},
@@ -197,6 +201,7 @@ export function loadConfig(
     apps,
     defaults: {
       reasoningMode,
+      effort: base.defaults.effort,
       maxTurns: base.defaults.maxTurns,
     },
     model: { path: modelPath, reranker, nCtx },

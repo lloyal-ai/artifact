@@ -45,7 +45,7 @@ main(function* () {
         version: 1,
         sources: {},
         apps: { web: { tavilyKey: 'tvly-saved-from-disk' } },
-        defaults: { reasoningMode: 'deep', verifyCount: 3, maxTurns: 10 },
+        defaults: { reasoningMode: 'deep', effort: 'high', verifyCount: 3, maxTurns: 10 },
         model: {},
       },
       origin,

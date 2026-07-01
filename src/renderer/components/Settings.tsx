@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import type { AppDescriptor } from '../../tui-ink/state'
 import { dispatch, useEngineState, useEngineStore } from '../bridge'
+import { EFFORT_PRESETS, EFFORT_ORDER, type Effort } from '../../effort-presets'
 
 /**
  * Settings drawer BODY — installed AgentApps + Advanced. The slide-over shell
@@ -518,6 +519,68 @@ function Advanced(): React.ReactElement {
   )
 }
 
+// ── Effort — read-only display of the run-effort policy presets ──────
+// Plain-language copy for each effort level — the consumer-facing trade-off
+// (how thorough vs how fast). The raw policy numbers live in the hover tooltip.
+const EFFORT_COPY: Record<Effort, { name: string; dots: number; eta: string; blurb: string }> = {
+  low: {
+    name: 'Low',
+    dots: 1,
+    eta: '~6–9 min',
+    blurb: 'A quick pass — looks at a couple of angles for the gist. Best for simple questions.',
+  },
+  medium: {
+    name: 'Medium',
+    dots: 2,
+    eta: '~12–18 min',
+    blurb: 'A solid look — covers several angles with more detail in the write-up.',
+  },
+  high: {
+    name: 'High',
+    dots: 3,
+    eta: '~20–30 min',
+    blurb: 'The full treatment — explores every angle for a thorough, detailed answer. Best for deep research.',
+  },
+}
+
+function Effort(): React.ReactElement {
+  const current = useEngineState().config?.defaults?.effort ?? 'high'
+  const c = EFFORT_COPY[current]
+  const p = EFFORT_PRESETS[current]
+  const t = p.budget.time
+  const tip = `${p.maxTasks} agents · ~${t.softLimit / 1000}–${t.hardLimit / 1000}s each · ${
+    p.reportBudget ? `${p.reportBudget}-tok reports` : 'full reports'
+  }`
+  return (
+    <div className="adv open">
+      <div className="adv-row">
+        <span className="at">Effort</span>
+      </div>
+      <div className="eff-seg" role="group" aria-label="Run effort">
+        {EFFORT_ORDER.map((lvl) => (
+          <button
+            key={lvl}
+            type="button"
+            className={lvl === current ? 'on' : ''}
+            onClick={() => dispatch({ type: 'set_effort', effort: lvl })}
+          >
+            {EFFORT_COPY[lvl].name}
+          </button>
+        ))}
+      </div>
+      <div className="eff-detail" title={tip}>
+        <span className="eff-eta">{c.eta}</span>
+        <p className="eff-desc">{c.blurb}</p>
+      </div>
+      <div className="adv-note">
+        How thoroughly Artifact researches every question. Applies to all questions
+        until you change it — it changes how deep the research goes, not what the
+        answer says.
+      </div>
+    </div>
+  )
+}
+
 function basename(p: string): string {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
   return i === -1 ? p : p.slice(i + 1)
@@ -563,6 +626,7 @@ export function SettingsBody(): React.ReactElement {
         App changes take effect on your next run — not one already in progress.
       </div>
 
+      <Effort />
       <Advanced />
     </>
   )

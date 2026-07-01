@@ -672,6 +672,33 @@ check('agent:recovered clears recovering + contentBuffer and freezes the report'
   assert.equal((reports[0] as { body: string }).body, 'X');
 });
 
+check('agent:failed marks the agent terminally failed (cross), freezes the timer, no report', () => {
+  const s = drive([
+    { type: 'query', query: 'q', warm: false },
+    {
+      type: 'plan',
+      intent: 'research',
+      tasks: [{ description: 'A' }] as never,
+      clarifyQuestions: [],
+      tokenCount: 1,
+      timeMs: 1,
+    },
+    { type: 'research:start', agentCount: 1, mode: 'flat' },
+    { type: 'agent:spawn', agentId: 1, parentAgentId: 0 } as WorkflowEvent,
+    { type: 'agent:done', agentId: 1 } as WorkflowEvent,
+    { type: 'agent:produce', agentId: 1, text: '{"result":"half a repo', tokenCount: 5 } as WorkflowEvent,
+    { type: 'agent:failed', agentId: 1, reason: 'scope_error: BranchStore::decode_each - llama_decode failed' } as WorkflowEvent,
+  ]);
+  const a = s.agents.get(1)!;
+  assert.equal(a.phase, 'failed');                       // terminal → cross, not a spinner
+  assert.equal(a.recovering, false);                     // stops the "Writing report" row
+  assert.equal(a.contentBuffer, '');                     // partial report dropped, not promoted
+  assert.notEqual(a.endedAt, null);                      // elapsed timer frozen
+  assert.match(a.failReason ?? '', /llama_decode failed/); // surfaced for the tooltip
+  assert.equal(a.timeline.filter((it) => it.kind === 'report').length, 0); // no report
+  assert.equal(s.researchAgentIds.includes(1), false);   // dropped from the live tree
+});
+
 check('config:loaded seeds config without forcing a uiPhase transition', () => {
   const s = drive([
     {
@@ -680,7 +707,7 @@ check('config:loaded seeds config without forcing a uiPhase transition', () => {
         version: 1,
         sources: {},
         apps: { web: { tavilyKey: 'tvly-x' } },
-        defaults: { reasoningMode: 'deep', maxTurns: 10 },
+        defaults: { reasoningMode: 'deep', effort: 'high', maxTurns: 10 },
         model: {},
       },
       origin: {
@@ -844,7 +871,7 @@ check('config:updated produces a toast; skipped fields flagged', () => {
     version: 1 as const,
     sources: {},
     apps: { corpus: { corpusPath: '/tmp/c' } },
-    defaults: { reasoningMode: 'deep' as const, maxTurns: 10 },
+    defaults: { reasoningMode: 'deep' as const, effort: 'high' as const, maxTurns: 10 },
     model: {},
   };
   const origin = {

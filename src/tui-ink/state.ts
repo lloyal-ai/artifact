@@ -100,7 +100,7 @@ export type TimelineItem =
 export interface AgentRuntime {
   id: number;
   label: string;                          // "A0", "A1", …
-  phase: 'idle' | 'thinking' | 'content' | 'tool' | 'done';
+  phase: 'idle' | 'thinking' | 'content' | 'tool' | 'done' | 'failed';
   tokenCount: number;
   toolCallCount: number;
   /** Wall-clock spawn time (ms) — start of this task's elapsed timer. */
@@ -142,6 +142,11 @@ export interface AgentRuntime {
    *  as the agent "Thinking". Set on `agent:done`, cleared on
    *  `agent:return`/`agent:recovered`. See docs/upstream-issues.md. */
   recovering: boolean;
+  /** Set when the agent's forced recovery FAILED (e.g. KV exhausted mid-report
+   *  decode → `llama_decode failed`): no result was produced. Drives the terminal
+   *  failure glyph (a cross) + frozen timer instead of an eternal "Writing report"
+   *  spinner. Set on `agent:failed`; null otherwise. */
+  failReason: string | null;
   /** Per-agent chronological stream. */
   timeline: TimelineItem[];
 }

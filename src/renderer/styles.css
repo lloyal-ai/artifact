@@ -202,7 +202,13 @@ input { font-family: inherit; }
 .cstat span { display: flex; align-items: center; gap: 5px; }
 .pill { font-size: 11.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .p-done { background: rgba(20, 245, 199, 0.13); color: var(--accent-ink); }
+.p-failed { background: rgba(224, 104, 109, 0.13); color: #e0686d; }
 .p-live { background: color-mix(in srgb, var(--kc) 16%, transparent); color: color-mix(in srgb, var(--kc) 85%, #fff); }
+/* Cancelled = intentional, not an error — neutral/muted, not the alarming failed red. */
+.p-cancelled { background: rgba(148, 163, 184, 0.14); color: var(--ink-3); }
+/* Per-agent cancel × in the live card header — muted by default, destructive-red on hover. */
+.ccancel { flex: none; width: 24px; height: 24px; border: 0; border-radius: 7px; background: none; color: var(--ink-4); font-size: 13px; line-height: 1; cursor: pointer; display: grid; place-items: center; transition: background 0.12s, color 0.12s; }
+.ccancel:hover { background: var(--hot); color: #fff; }
 .p-queued { background: var(--bg-3); color: var(--ink-3); }
 .p-live .ld { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: breathe 1.4s ease-in-out infinite; }
 .chev { color: var(--ink-4); transition: 0.2s; flex: none; width: 15px; height: 15px; }
@@ -383,6 +389,20 @@ input { font-family: inherit; }
 .cinner .send:disabled { background: var(--bg-3); color: var(--ink-4); cursor: default; }
 .cinner .send.stop { background: var(--hot); color: #fff; }
 .cinner .send.stop:hover { filter: brightness(1.08); }
+/* Stop control → menu (Wrap up | Halt). Popover above the Stop button; research phase only. */
+.stop-wrap { position: relative; flex: none; display: flex; }
+.stop-menu { position: absolute; bottom: calc(100% + 12px); right: 0; z-index: 31; display: flex; flex-direction: column; gap: 2px; min-width: 234px; padding: 6px; background: rgba(24, 28, 40, 0.98); border: 1px solid var(--line-2); border-radius: 13px; box-shadow: 0 22px 60px rgba(0, 0, 0, 0.66); backdrop-filter: blur(12px); }
+.stop-menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 9px 12px; border: 0; border-radius: 9px; background: none; cursor: pointer; }
+.stop-menu button:hover { background: var(--bg-3); }
+.stop-menu .sm-t { color: var(--ink); font-size: 13.5px; font-weight: 600; }
+.stop-menu .sm-s { color: var(--ink-4); font-size: 11.5px; }
+.stop-menu .sm-halt .sm-t { color: var(--hot); }
+/* Research-mode lever (per-query intent) — Research = planned multi-agent · Ask = single-agent direct.
+   Centered pill between the input and the hint; mirrors the Settings .eff-seg segmented control. */
+.rmode { display: flex; justify-content: center; gap: 3px; width: max-content; margin: 10px auto 0; padding: 3px; background: var(--bg-3); border-radius: 10px; }
+.rmode button { font-family: inherit; font-size: 12px; color: var(--ink-3); background: none; border: 0; border-radius: 7px; padding: 5px 14px; cursor: pointer; transition: background 0.12s, color 0.12s; }
+.rmode button:hover { color: var(--ink); }
+.rmode button.on { background: var(--accent); color: #02120e; font-weight: 600; }
 .chint { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 11px; font-size: 12.5px; color: var(--ink-4); }
 .chint .cidx { color: var(--cyan); opacity: 0.85; font-variant-numeric: tabular-nums; flex: none; }
 /* Frontier-style disclaimer — static, dim, the model is the caveat (the harness is exact). */
@@ -535,6 +555,14 @@ input { font-family: inherit; }
 .irow + .irow { border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
 .irow .il { color: var(--ink-3); }
 .irow .iv { color: var(--ink); font-weight: 550; font-variant-numeric: tabular-nums; }
+/* Effort — global setting: segmented picker + the selected level's detail. */
+.eff-seg { display: flex; gap: 4px; background: var(--bg-3); border-radius: 11px; padding: 4px; margin: 8px 0 0; }
+.eff-seg button { flex: 1; font-family: inherit; font-size: 13px; color: var(--ink-3); background: none; border: 0; border-radius: 8px; padding: 8px 0; cursor: pointer; transition: background 0.12s, color 0.12s; }
+.eff-seg button:hover { color: var(--ink); }
+.eff-seg button.on { background: var(--accent); color: #02120e; font-weight: 600; }
+.eff-detail { padding: 13px 2px 2px; }
+.eff-detail .eff-eta { color: var(--ink); font-weight: 600; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.eff-detail .eff-desc { color: var(--ink-4); font-size: 12.5px; line-height: 1.5; margin: 5px 0 0; }
 .adv-note { font-size: 12.5px; color: var(--ink-4); padding: 13px 1px 6px; line-height: 1.5; }
 
 /* ── Output folder field (Advanced — editable, unlike model rows) ── */

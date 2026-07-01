@@ -22,6 +22,9 @@ export type Command =
   | { type: 'move_task'; from: number; to: number }
   | { type: 'set_app_config'; name: string; values: Record<string, unknown> }
   | { type: 'set_output_dir'; path: string }
+  // Global run-effort setting (pure policy preset). Set in Settings → Effort;
+  // persisted to harness.json and applied to every subsequent query.
+  | { type: 'set_effort'; effort: 'low' | 'medium' | 'high' }
   | { type: 'set_model_path'; path: string }
   | { type: 'set_reranker_path'; path: string }
   | { type: 'toggle_participation'; name: string }
@@ -31,4 +34,14 @@ export type Command =
   // parked tool fetch via cancellable-fetch's scope-signal) and sending
   // `ui:composer`. No-op when no run is active. Never kills the loop/process.
   | { type: 'stop' }
+  // Graceful "Wrap up": drain the in-flight run to a fast best-effort answer
+  // instead of aborting it. Handled in main.ts by sending the WindDown signal
+  // (NOT halting) — the pool stops spawning, reaps active agents, lets in-flight
+  // tools settle, and folds the cohort into a recovered answer + synth. No-op
+  // when no run is active. Distinct from `stop` (abort → composer).
+  | { type: 'wrap_up' }
+  // Per-agent cancel: discard one LIVE flat-mode research agent (halt its tool +
+  // prune its KV + terminal agent:failed(user_cancel)); siblings keep running. The
+  // renderer only offers this on a live, non-recovering flat-mode card.
+  | { type: 'cancel_agent'; agentId: number }
   | { type: 'quit' };

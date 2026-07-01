@@ -31,6 +31,8 @@ import {
   initAgents,
   JsonlTraceWriter,
   RerankerCtx,
+  WindDown,
+  CancelAgent,
   extractSpineSeed,
   reconstructBranch,
   type BranchCheckpoint,
@@ -135,6 +137,7 @@ import {
   singleTaskPlan,
   createCoverageCache,
   CoverageCacheCtx,
+  type Effort,
 } from "./harness";
 import {
   downloadIfMissing,
@@ -551,6 +554,16 @@ main(function* () {
   // can push directly.
   const uiChannel: EventBus<WorkflowEvent> = createBus<WorkflowEvent>();
   const commands = createSignal<Command, void>();
+  // Graceful "Wrap up" signal — provided to the run scope via the agents WindDown
+  // context; the command loop sends it on a `wrap_up` command to drain the pool to
+  // a fast best-effort answer (distinct from `stop` = halt). One persistent signal;
+  // each run's pool subscribes fresh on it.
+  const windDown = createSignal<void, void>();
+  // Per-agent cancel signal — provided to the run scope via the agents CancelAgent
+  // context; the command loop sends `{agentId}` on a `cancel_agent` command to discard
+  // one live research agent (halt its tool + prune its KV + terminal agent:failed).
+  // One persistent signal; each run's pool subscribes fresh on it.
+  const cancelAgent = createSignal<{ agentId: number }, void>();
 
   // CLI overrides for model paths get nulled when the user picks a path via
   // /model or /reranker — otherwise the CLI flag would clobber the user's
@@ -931,6 +944,9 @@ main(function* () {
       // It also sets AppRegistryCtx, which the research pool reads to render
       // the spine and resolve per-spawn tool scope.
       yield* RerankerCtx.set(rerankerFinal);
+      // Provide the wind-down signal into the run scope; the research pool reads it
+      // via WindDown.get() and drains on send. Absent ⇒ no wind-down (it's optional).
+      yield* WindDown.set(windDown);
       const configStore = createInMemoryConfigStore();
       // Seed the config store generically from the per-app config map — no
       // app-name knowledge. Each app's factory reads its own entry on enable
@@ -1003,6 +1019,7 @@ main(function* () {
         maxTurns: MAX_TOOL_TURNS,
         findingsMaxChars,
         reasoningMode: liveConfig.defaults.reasoningMode,
+        effort: liveConfig.defaults.effort,
       };
 
       function startRunDir(query: string, mode: "flat" | "deep"): void {
@@ -1049,6 +1066,11 @@ main(function* () {
 
       // ── Ink TTY command loop ───────────────────────────────────
 
+      // Per-query run effort, set at submit_query and read by every research
+      // path (clarify / edit / accept preserve it — effort is constant for a
+      // query's lifetime; no mid-run switching by design). Initialised to the
+      // config default for the --query boot path.
+      let currentEffort: Effort = liveConfig.defaults.effort;
       let pendingPlan: {
         plan: PlanResult;
         /** The original headline query — the planner's anchor across clarify
@@ -1216,6 +1238,25 @@ main(function* () {
             continue;
           }
 
+          if (cmd.type === "wrap_up") {
+            // Graceful wind-down: signal the pool to DRAIN to a fast best-effort
+            // answer — stop spawning, reap active agents, let in-flight tools
+            // settle, fold. Unlike `stop`, we do NOT halt: the run scope stays
+            // alive and produces its answer + synth. No-op if no run is active.
+            if (runTask) windDown.send();
+            continue;
+          }
+
+          if (cmd.type === "cancel_agent") {
+            // Per-agent discard: signal the pool to halt that one agent's in-flight
+            // tool, prune its branch (reclaim KV for its siblings), and emit a terminal
+            // agent:failed(user_cancel). Unlike `wrap_up`/`stop`, the run keeps going —
+            // the other agents are untouched. No-op if no run is active or the agent
+            // already finished. Ephemeral (nothing persisted).
+            if (runTask) cancelAgent.send({ agentId: cmd.agentId });
+            continue;
+          }
+
           if (cmd.type === "set_model_path") {
             // Composer only mounts in 'composer' phase, so no agent is in
             // flight here. Persist + signal restart; structured concurrency
@@ -1346,6 +1387,24 @@ main(function* () {
               gitignored: saved.gitignored,
               skipped: saved.skipped,
             });
+          } else if (cmd.type === "set_effort") {
+            // Global effort setting → persist to harness.json, reload, echo back.
+            // Every subsequent query reads liveConfig.defaults.effort.
+            const saved = saveConfig(
+              { defaults: { ...liveConfig.defaults, effort: cmd.effort } },
+              configPath,
+            );
+            const reloaded = reloadLiveConfig();
+            liveConfig = reloaded.config;
+            liveOrigin = reloaded.origin;
+            yield* events.send({
+              type: "config:updated",
+              config: liveConfig,
+              origin: liveOrigin,
+              savedTo: saved.path,
+              gitignored: saved.gitignored,
+              skipped: saved.skipped,
+            });
           } else if (cmd.type === "submit_query") {
             if (registry.enabled().length === 0) {
               yield* events.send({
@@ -1366,6 +1425,9 @@ main(function* () {
               continue;
             }
             const wallStartMs = performance.now();
+            // Effort is a global setting (Settings → Effort) — read the live
+            // config value at submit time so a change there applies next query.
+            currentEffort = liveConfig.defaults.effort;
             // A `submit_query` while a run is already in flight = the user
             // started over. Halt the old run first, then start the new (the
             // safe choice — never two concurrent research pools sharing the
@@ -1406,8 +1468,11 @@ main(function* () {
                   yield* runResearchPlan(cmd.query, plan, session, {
                     ...harnessOpts,
                     reasoningMode: cmd.mode,
+                    effort: currentEffort,
                     wallStartMs,
                     appFilter: submissionFilter,
+                    // Ask mode: let the single agent answer directly from context (0 tools OK).
+                    isAsk: cmd.skipPlanner,
                   });
                   yield* events.send({ type: "ui:composer" });
                 } catch (err) {
@@ -1434,6 +1499,7 @@ main(function* () {
                 const result = yield* runQuery(queryText, session, {
                   ...harnessOpts,
                   reasoningMode: queryMode,
+                  effort: currentEffort,
                   context: buildPlannerContext(registry.enabled()),
                   wallStartMs,
                   appFilter: submissionFilter,
@@ -1505,6 +1571,7 @@ main(function* () {
                 const result = yield* runQuery(origQuery, session, {
                   ...harnessOpts,
                   reasoningMode: mode,
+                  effort: currentEffort,
                   context: buildPlannerContext(registry.enabled()),
                   wallStartMs,
                   appFilter,
@@ -1550,6 +1617,7 @@ main(function* () {
                 const result = yield* runQuery(priorPlan.query, session, {
                   ...harnessOpts,
                   reasoningMode: nextMode,
+                  effort: currentEffort,
                   context: buildPlannerContext(registry.enabled()),
                   wallStartMs: priorPlan.wallStartMs,
                   appFilter: priorPlan.appFilter,
@@ -1613,6 +1681,7 @@ main(function* () {
                   {
                     ...harnessOpts,
                     reasoningMode: acceptedPlan.mode,
+                    effort: currentEffort,
                     wallStartMs: acceptedPlan.wallStartMs,
                     appFilter: acceptedPlan.appFilter,
                     // Q1.5: if a clarify round prefilled the user's answer onto
