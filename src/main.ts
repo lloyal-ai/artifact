@@ -871,6 +871,15 @@ main(function* () {
             kind: lastFailedKind,
             message: errorMessage(err),
           });
+          // One-shot mode has no /model command loop to recover through —
+          // a boot error must fail loud on stderr, not park awaiting a
+          // command that can never arrive.
+          if (!useInk && !bridgeMode) {
+            process.stderr.write(
+              `Boot failed (${lastFailedKind}): ${errorMessage(err)}\n`,
+            );
+            process.exit(2);
+          }
           const cmd = yield* awaitBootRecovery();
           if (cmd.type === "quit") {
             return "quit";
