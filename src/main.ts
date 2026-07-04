@@ -947,6 +947,9 @@ main(function* () {
       // Provide the wind-down signal into the run scope; the research pool reads it
       // via WindDown.get() and drains on send. Absent ⇒ no wind-down (it's optional).
       yield* WindDown.set(windDown);
+      // Provide the per-agent cancel signal the same way; the pool reads it via
+      // CancelAgent.get() and discards the named agent on send. Absent ⇒ no cancel.
+      yield* CancelAgent.set(cancelAgent);
       const configStore = createInMemoryConfigStore();
       // Seed the config store generically from the per-app config map — no
       // app-name knowledge. Each app's factory reads its own entry on enable
