@@ -486,6 +486,9 @@ function Advanced(): React.ReactElement {
   const modelName = model?.path ? basename(model.path) : '—'
   const rerankName = model?.reranker ? basename(model.reranker) : '—'
   const nCtx = model?.nCtx ?? 32768
+  // Configured backend (model.gpu); darwin's default binary is Metal, so an
+  // unset value reads as automatic selection.
+  const compute = model?.gpu ? `${model.gpu} · configured` : 'Metal · auto'
   return (
     <div className="adv open">
       <div className="adv-row">
@@ -503,7 +506,7 @@ function Advanced(): React.ReactElement {
         </div>
         <div className="irow">
           <span className="il">Compute</span>
-          <span className="iv">Metal · auto</span>
+          <span className="iv">{compute}</span>
         </div>
         <div className="irow">
           <span className="il">Context</span>
@@ -512,8 +515,8 @@ function Advanced(): React.ReactElement {
       </div>
       <OutputField />
       <div className="adv-note">
-        Model + reranker are fixed to keep every app behaving exactly as tested · compute backend detected
-        automatically.
+        Model + reranker are fixed to keep every app behaving exactly as tested · compute backend follows
+        harness.json's model.gpu (automatic when unset).
       </div>
     </div>
   )

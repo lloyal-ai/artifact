@@ -9,7 +9,6 @@ import assert from 'node:assert';
 import { reduce } from './reducer';
 import { initialState } from './state';
 import type { WorkflowEvent } from './events';
-import { extractStreamingReport } from '../renderer/components/Work';
 
 function drive(events: WorkflowEvent[]) {
   return events.reduce(reduce, initialState);
@@ -517,11 +516,11 @@ function reportStreamSeed(): WorkflowEvent[] {
   ];
 }
 
-check('terminal report streams into contentBuffer; extractStreamingReport yields progressive markdown', () => {
+check('terminal report streams into contentBuffer as raw post-think tokens', () => {
   // The model emits the terminal call as Hermes XML. After </think> closes,
   // the raw tokens (incl. the report body inside <parameter=result>) flow into
-  // contentBuffer. The "Writing report" row reads it via extractStreamingReport
-  // — no parser, no agent:reportDelta, no isPartial.
+  // contentBuffer. (The desktop renderer's extractStreamingReport reads this
+  // buffer; the reducer contract is just: buffer accumulates, phase 'content'.)
   const s = drive([
     ...reportStreamSeed(),
     {
@@ -537,30 +536,6 @@ check('terminal report streams into contentBuffer; extractStreamingReport yields
   // Raw buffer holds the post-</think> XML, marker and all.
   assert.match(a.contentBuffer, /<parameter=result>/);
   assert.match(a.contentBuffer, /\*\*Partial report — findings so far/);
-  // The extractor returns just the report body (open marker stripped, leading \n trimmed).
-  assert.equal(extractStreamingReport(a.contentBuffer), '**Partial report — findings so far');
-});
-
-check('extractStreamingReport stops at </parameter> once the close marker arrives', () => {
-  const s = drive([
-    ...reportStreamSeed(),
-    {
-      type: 'agent:produce',
-      agentId: 1,
-      text: 'go</think>\n\n<tool_call>\n<function=report>\n<parameter=result>\n**Done report',
-      tokenCount: 3,
-    } as WorkflowEvent,
-    { type: 'agent:produce', agentId: 1, text: '\n</parameter>\n</function>\n</tool_call>', tokenCount: 4 } as WorkflowEvent,
-  ]);
-  const a = s.agents.get(1)!;
-  // Body is clipped at the close marker — the </function></tool_call> tail is
-  // excluded. The raw body ends in the model's own trailing newline (the
-  // extractor strips only the leading \n; trailing whitespace is the body's,
-  // and the render gate .trim()s it).
-  assert.equal(extractStreamingReport(a.contentBuffer), '**Done report\n');
-  // Critically: the close marker and everything after it are gone.
-  assert.ok(!extractStreamingReport(a.contentBuffer)!.includes('</parameter>'));
-  assert.ok(!extractStreamingReport(a.contentBuffer)!.includes('</tool_call>'));
 });
 
 check('terminal report agent:tool_call pushes NO generic "Reading" timeline row', () => {
@@ -715,6 +690,7 @@ check('config:loaded seeds config without forcing a uiPhase transition', () => {
         modelPath: 'default',
         reranker: 'default',
         nCtx: 'default',
+        gpu: 'default',
         outputDir: 'default',
       },
       path: '/tmp/harness.json',
@@ -879,6 +855,7 @@ check('config:updated produces a toast; skipped fields flagged', () => {
     modelPath: 'default' as const,
     reranker: 'default' as const,
     nCtx: 'default' as const,
+    gpu: 'default' as const,
     outputDir: 'default' as const,
   };
   const s = drive([

@@ -108,7 +108,8 @@ function spawnEngine(): void {
   outputDir = join(app.getPath('documents'), 'Artifact')
 
   // RR_BRIDGE → harness streams over parentPort instead of mounting Ink.
-  // GPU: macOS auto-selects the Metal binary (default darwin-arm64; no LLOYAL_GPU).
+  // GPU: macOS auto-selects the Metal binary (default darwin-arm64). On other
+  // platforms the engine reads model.gpu from harness.json (or LLOYAL_GPU).
   const env = { ...process.env, RR_BRIDGE: '1' }
   if (app.isPackaged && !process.env.XDG_CACHE_HOME) {
     // Packaged: no writable cwd and no ~/.cache guarantee — redirect the model
