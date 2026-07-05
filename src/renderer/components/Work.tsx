@@ -1,5 +1,6 @@
 import React from 'react'
 import type { AgentRuntime, TimelineItem } from '../../tui-ink/state'
+import { extractStreamingReport } from '../../tui-ink/state'
 import { IconChevron, IconDone, IconThink, toolIcon } from '../icons'
 import { Markdown } from './Markdown'
 
@@ -39,20 +40,6 @@ export function extractReportBody(body: string): string {
     }
   }
   return body
-}
-
-/** Live report markdown from a raw Hermes terminal-tool buffer:
- *  `…<parameter=result>\n<markdown>\n</parameter>…`. Raw <parameter> values are
- *  unescaped, so no decoding — same idea as streaming a think block until </think>.
- *  Returns the body (to the close marker, or buffer tail if not arrived), or null. */
-export function extractStreamingReport(buffer: string): string | null {
-  const OPEN = '<parameter=result>'
-  const i = buffer.indexOf(OPEN)
-  if (i === -1) return null
-  let body = buffer.slice(i + OPEN.length)
-  const c = body.indexOf('</parameter>')
-  if (c !== -1) body = body.slice(0, c)
-  return body.replace(/^\n/, '')
 }
 
 /** A think row — collapsed by default (think bodies can be huge when thinking
