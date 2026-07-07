@@ -100,7 +100,7 @@ export type TimelineItem =
 export interface AgentRuntime {
   id: number;
   label: string;                          // "A0", "A1", …
-  phase: 'idle' | 'thinking' | 'content' | 'tool' | 'done';
+  phase: 'idle' | 'thinking' | 'content' | 'tool' | 'done' | 'failed';
   tokenCount: number;
   toolCallCount: number;
   /** Wall-clock spawn time (ms) — start of this task's elapsed timer. */
@@ -129,8 +129,9 @@ export interface AgentRuntime {
    *  closing a think block and the next agent:tool_call / agent:report
    *  (the model is writing tool-call JSON — the terminal `report` tool's body
    *  lives inside that JSON, between `<parameter=result>` and `</parameter>`,
-   *  raw and unescaped). The "Writing report" row extracts the live report body
-   *  straight from this buffer (see extractStreamingReport in Work.tsx) — same
+   *  raw and unescaped). Renderers extract the live report body straight from
+   *  this buffer via `extractStreamingReport` below (consumed by Column.tsx's
+   *  ContentStream and the desktop renderer's Work.tsx) — same
    *  marker-delimited technique the think block uses with `</think>`. Cleared
    *  on tool_call / report (those fire structured items instead). */
   contentBuffer: string;
@@ -142,8 +143,31 @@ export interface AgentRuntime {
    *  as the agent "Thinking". Set on `agent:done`, cleared on
    *  `agent:return`/`agent:recovered`. See docs/upstream-issues.md. */
   recovering: boolean;
+  /** Set when the agent's forced recovery FAILED (e.g. KV exhausted mid-report
+   *  decode → `llama_decode failed`): no result was produced. Drives the terminal
+   *  failure glyph (a cross) + frozen timer instead of an eternal "Writing report"
+   *  spinner. Set on `agent:failed`; null otherwise. */
+  failReason: string | null;
   /** Per-agent chronological stream. */
   timeline: TimelineItem[];
+}
+
+/** Live report markdown from a raw Hermes terminal-tool buffer:
+ *  `…<parameter=result>\n<markdown>\n</parameter>…`. Raw <parameter> values are
+ *  unescaped, so no decoding — same idea as streaming a think block until </think>.
+ *  Returns the body (to the close marker, or buffer tail if not arrived), or null.
+ *  Null until the open marker arrives — that gating is what keeps non-terminal
+ *  tool-call args (search queries, URLs) from flashing as report prose. Callers
+ *  branch on `recovering` first: a forced recovery streams raw prose with no
+ *  envelope, so the buffer is used verbatim there. */
+export function extractStreamingReport(buffer: string): string | null {
+  const OPEN = '<parameter=result>';
+  const i = buffer.indexOf(OPEN);
+  if (i === -1) return null;
+  let body = buffer.slice(i + OPEN.length);
+  const c = body.indexOf('</parameter>');
+  if (c !== -1) body = body.slice(0, c);
+  return body.replace(/^\n/, '');
 }
 
 /** Append-only items rendered via Ink's `<Static>` so they get written to

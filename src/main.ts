@@ -31,6 +31,8 @@ import {
   initAgents,
   JsonlTraceWriter,
   RerankerCtx,
+  WindDown,
+  CancelAgent,
   extractSpineSeed,
   reconstructBranch,
   type BranchCheckpoint,
@@ -53,7 +55,7 @@ import {
 import type { WorkflowEvent, Command, Config } from "./tui-ink";
 // Runtime imports ONLY from modules that don't transitively pull Ink (ESM),
 // otherwise the top-level await in yoga-wasm-web breaks the CJS loader.
-import { loadConfig, saveConfig } from "./tui-ink/config";
+import { loadConfig, saveConfig, isConfigGpu } from "./tui-ink/config";
 import type { LoadedConfig } from "./tui-ink/config";
 import { createBus, type EventBus } from "./tui-ink/event-bus";
 import {
@@ -135,6 +137,7 @@ import {
   singleTaskPlan,
   createCoverageCache,
   CoverageCacheCtx,
+  type Effort,
 } from "./harness";
 import {
   downloadIfMissing,
@@ -155,9 +158,11 @@ const { values: flags, positionals } = parseArgs({
   args: process.argv.slice(2),
   options: {
     query: { type: "string" },
+    model: { type: "string" },
     reranker: { type: "string" },
     corpus: { type: "string" },
     config: { type: "string" },
+    gpu: { type: "string" },
     "findings-budget": { type: "string" },
     "reasoning-mode": { type: "string" },
     "n-ctx": { type: "string" },
@@ -181,7 +186,32 @@ if (
   process.exit(1);
 }
 
-const cliModelPath = positionals[0] || undefined;
+// GPU backend, validated against lloyal.node's GpuVariant union. "metal"
+// gets a dedicated message — it's not a variant package; the darwin binary
+// has Metal built in.
+const gpuFlag = flags.gpu;
+if (gpuFlag === "metal") {
+  process.stderr.write(
+    `Invalid --gpu: metal. Metal is automatic on macOS (built into the darwin binary) — omit --gpu, or pass cuda|vulkan on Linux/Windows ("default" = the platform binary's built-in backend).\n`,
+  );
+  process.exit(1);
+}
+if (!isConfigGpu(gpuFlag) && gpuFlag !== undefined) {
+  process.stderr.write(
+    `Invalid --gpu: ${gpuFlag}. Expected "cuda", "vulkan" or "default".\n`,
+  );
+  process.exit(1);
+}
+
+// Model path: `--model` flag or first positional. Both given and
+// disagreeing is ambiguous — fail rather than pick one.
+if (flags.model && positionals[0] && flags.model !== positionals[0]) {
+  process.stderr.write(
+    `Conflicting model paths: --model ${flags.model} vs positional ${positionals[0]}. Pass one.\n`,
+  );
+  process.exit(1);
+}
+const cliModelPath = flags.model ?? (positionals[0] || undefined);
 const verbose = flags.verbose;
 const cliOutputDir = flags["output-dir"];
 const configPath = flags.config ?? DEFAULT_CONFIG_PATH;
@@ -288,15 +318,28 @@ function applyCorpusFlag(loadedCfg: LoadedConfig): LoadedConfig {
   return loadedCfg;
 }
 
+// Snapshot the LAUNCH-time environment for config precedence. The boot
+// path later injects LLOYAL_GPU into process.env to steer the native
+// loader; resolving reloads against live process.env would feed our own
+// injection back in as the env rung — beating a fresher harness.json
+// write (/gpu) and misattributing origin. Precedence always resolves
+// against what the user actually launched with.
+const launchEnv: NodeJS.ProcessEnv = { ...process.env };
+
 // Merge: CLI flag > env > harness.json > default.
 const loaded = applyCorpusFlag(
-  loadConfig(configPath, {
-    modelPath: cliModelPath,
-    reranker: flags.reranker,
-    reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
-    nCtx: nCtxCli,
-    outputDir: cliOutputDir,
-  }),
+  loadConfig(
+    configPath,
+    {
+      modelPath: cliModelPath,
+      reranker: flags.reranker,
+      reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
+      nCtx: nCtxCli,
+      gpu: gpuFlag,
+      outputDir: cliOutputDir,
+    },
+    launchEnv,
+  ),
 );
 let liveConfig: Config = loaded.config;
 let liveOrigin = loaded.origin;
@@ -551,12 +594,23 @@ main(function* () {
   // can push directly.
   const uiChannel: EventBus<WorkflowEvent> = createBus<WorkflowEvent>();
   const commands = createSignal<Command, void>();
+  // Graceful "Wrap up" signal — provided to the run scope via the agents WindDown
+  // context; the command loop sends it on a `wrap_up` command to drain the pool to
+  // a fast best-effort answer (distinct from `stop` = halt). One persistent signal;
+  // each run's pool subscribes fresh on it.
+  const windDown = createSignal<void, void>();
+  // Per-agent cancel signal — provided to the run scope via the agents CancelAgent
+  // context; the command loop sends `{agentId}` on a `cancel_agent` command to discard
+  // one live research agent (halt its tool + prune its KV + terminal agent:failed).
+  // One persistent signal; each run's pool subscribes fresh on it.
+  const cancelAgent = createSignal<{ agentId: number }, void>();
 
   // CLI overrides for model paths get nulled when the user picks a path via
   // /model or /reranker — otherwise the CLI flag would clobber the user's
   // explicit slash choice on the next restart iteration.
   let cliModelOverride: string | undefined = cliModelPath;
   let cliRerankerOverride: string | undefined = flags.reranker;
+  let cliGpuOverride = gpuFlag;
 
   // Re-load harness.json with the live CLI-override state + the `--corpus`
   // flag overlay. Used on every restart / config-write reload so the four
@@ -564,14 +618,67 @@ main(function* () {
   // that no longer live in CliOverrides).
   const reloadLiveConfig = (): LoadedConfig =>
     applyCorpusFlag(
-      loadConfig(configPath, {
-        modelPath: cliModelOverride,
-        reranker: cliRerankerOverride,
-        reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
-        outputDir: cliOutputDir,
-        nCtx: nCtxCli,
-      }),
+      loadConfig(
+        configPath,
+        {
+          modelPath: cliModelOverride,
+          reranker: cliRerankerOverride,
+          reasoningMode: reasoningModeFlag as "flat" | "deep" | undefined,
+          outputDir: cliOutputDir,
+          nCtx: nCtxCli,
+          gpu: cliGpuOverride,
+        },
+        // launchEnv, not process.env: applyGpuEnv injects LLOYAL_GPU below;
+        // reloads must not read our own injection back as the env rung.
+        launchEnv,
+      ),
     );
+
+  // Steer the native-binding load for BOTH the main context and the
+  // reranker: rig's createReranker exposes no loadOptions passthrough, so
+  // process.env.LLOYAL_GPU (read lazily inside lloyal.node's loadBinary at
+  // createContext time) is the one lever that reaches them both. When the
+  // backend was EXPLICITLY requested (flag or harness.json — not a bare
+  // pre-existing env var), an unavailable variant should fail loud at boot
+  // rather than silently falling back to CPU; the loader's own
+  // LLOYAL_NO_FALLBACK knob does exactly that. A user-set LLOYAL_NO_FALLBACK
+  // is never overridden.
+  //
+  // Tracks whether WE set LLOYAL_NO_FALLBACK (vs the user), so a reload
+  // where the backend is no longer explicitly requested clears exactly
+  // what we own and nothing else.
+  let noFallbackOwned = false;
+  const applyGpuEnv = (cfg: Pick<LoadedConfig, "config" | "origin">): void => {
+    const gpu = cfg.config.model.gpu;
+    if (gpu) {
+      process.env.LLOYAL_GPU = gpu;
+    } else if (process.env.LLOYAL_GPU !== undefined) {
+      // Mirror the resolved config exactly: with no gpu from any rung, a
+      // leftover env value (invalid at launch, or a stale self-injection
+      // after config cleared) must not keep steering the native loader.
+      // This is a non-fatal notice, not an error — no bus event: ui:error's
+      // reducer forces uiPhase back to 'composer', which would corrupt the
+      // boot phase this runs in. Plain one-shot mode keeps a stderr line
+      // (nothing to corrupt there); elsewhere the resolved backend is
+      // already visible via config:loaded.
+      if (!useInk && !bridgeMode) {
+        process.stderr.write(
+          `Ignoring LLOYAL_GPU=${process.env.LLOYAL_GPU} — no valid backend configured (expected cuda|vulkan|default)\n`,
+        );
+      }
+      delete process.env.LLOYAL_GPU;
+    }
+    const explicit =
+      gpu !== undefined &&
+      (cfg.origin.gpu === "cli" || cfg.origin.gpu === "file");
+    if (explicit && process.env.LLOYAL_NO_FALLBACK === undefined) {
+      process.env.LLOYAL_NO_FALLBACK = "1";
+      noFallbackOwned = true;
+    } else if (!explicit && noFallbackOwned) {
+      delete process.env.LLOYAL_NO_FALLBACK;
+      noFallbackOwned = false;
+    }
+  };
 
   // Compute initial download plan synchronously so it can be bootstrapped
   // alongside config:loaded. Reasoning: if we send download:plan via the bus
@@ -733,13 +840,15 @@ main(function* () {
   function* awaitBootRecovery(): Operation<
     | { type: "set_model_path"; path: string }
     | { type: "set_reranker_path"; path: string }
+    | { type: "set_gpu"; gpu: "default" | "cuda" | "vulkan" }
     | { type: "quit" }
   > {
     for (const cmd of yield* each(commands)) {
       if (
         cmd.type === "quit" ||
         cmd.type === "set_model_path" ||
-        cmd.type === "set_reranker_path"
+        cmd.type === "set_reranker_path" ||
+        cmd.type === "set_gpu"
       ) {
         yield* each.next();
         return cmd;
@@ -823,16 +932,28 @@ main(function* () {
           lastFailedKind = "reranker";
           yield* ensureFile(rerankerResolvedNow);
 
+          // Re-derive per attempt: a /gpu recovery command reloads liveConfig
+          // between attempts. The env lever must be set before EITHER
+          // createContext (loadBinary reads it lazily at call time) and is
+          // what steers the reranker below — rig has no loadOptions passthrough.
+          applyGpuEnv({ config: liveConfig, origin: liveOrigin });
+          const gpuNow = liveConfig.model.gpu;
+
           lastFailedKind = "llm";
           uiChannel.send({ type: "weights:start", label: `Loading ${modelNameNow}…` });
           ctx = yield* call(() =>
-            createContext({
-              modelPath: modelPathNow,
-              nCtx,
-              nSeqMax: 64,
-              typeK: "q4_0",
-              typeV: "q4_0",
-            }),
+            createContext(
+              {
+                modelPath: modelPathNow,
+                nCtx,
+                nSeqMax: 64,
+                typeK: "q4_0",
+                typeV: "q4_0",
+              },
+              // Explicit variant beats env inside lloyal.node; the reranker
+              // (no loadOptions passthrough in rig) rides LLOYAL_GPU set above.
+              gpuNow ? { gpuVariant: gpuNow } : undefined,
+            ),
           );
 
           lastFailedKind = "reranker";
@@ -858,6 +979,15 @@ main(function* () {
             kind: lastFailedKind,
             message: errorMessage(err),
           });
+          // One-shot mode has no /model command loop to recover through —
+          // a boot error must fail loud on stderr, not park awaiting a
+          // command that can never arrive.
+          if (!useInk && !bridgeMode) {
+            process.stderr.write(
+              `Boot failed (${lastFailedKind}): ${errorMessage(err)}\n`,
+            );
+            process.exit(2);
+          }
           const cmd = yield* awaitBootRecovery();
           if (cmd.type === "quit") {
             return "quit";
@@ -869,6 +999,11 @@ main(function* () {
             modelPathNow = llmResolvedNow.path;
             modelNameNow =
               llmResolvedNow.entry?.label ?? path.basename(modelPathNow);
+          } else if (cmd.type === "set_gpu") {
+            // A no-fallback variant failure is the boot error /gpu exists to
+            // recover from; the next attempt re-derives env from the reload.
+            saveConfig({ model: { gpu: cmd.gpu } }, configPath);
+            cliGpuOverride = undefined;
           } else {
             saveConfig({ model: { reranker: cmd.path } }, configPath);
             cliRerankerOverride = undefined;
@@ -931,6 +1066,12 @@ main(function* () {
       // It also sets AppRegistryCtx, which the research pool reads to render
       // the spine and resolve per-spawn tool scope.
       yield* RerankerCtx.set(rerankerFinal);
+      // Provide the wind-down signal into the run scope; the research pool reads it
+      // via WindDown.get() and drains on send. Absent ⇒ no wind-down (it's optional).
+      yield* WindDown.set(windDown);
+      // Provide the per-agent cancel signal the same way; the pool reads it via
+      // CancelAgent.get() and discards the named agent on send. Absent ⇒ no cancel.
+      yield* CancelAgent.set(cancelAgent);
       const configStore = createInMemoryConfigStore();
       // Seed the config store generically from the per-app config map — no
       // app-name knowledge. Each app's factory reads its own entry on enable
@@ -1003,6 +1144,7 @@ main(function* () {
         maxTurns: MAX_TOOL_TURNS,
         findingsMaxChars,
         reasoningMode: liveConfig.defaults.reasoningMode,
+        effort: liveConfig.defaults.effort,
       };
 
       function startRunDir(query: string, mode: "flat" | "deep"): void {
@@ -1049,6 +1191,11 @@ main(function* () {
 
       // ── Ink TTY command loop ───────────────────────────────────
 
+      // Per-query run effort, set at submit_query and read by every research
+      // path (clarify / edit / accept preserve it — effort is constant for a
+      // query's lifetime; no mid-run switching by design). Initialised to the
+      // config default for the --query boot path.
+      let currentEffort: Effort = liveConfig.defaults.effort;
       let pendingPlan: {
         plan: PlanResult;
         /** The original headline query — the planner's anchor across clarify
@@ -1216,6 +1363,25 @@ main(function* () {
             continue;
           }
 
+          if (cmd.type === "wrap_up") {
+            // Graceful wind-down: signal the pool to DRAIN to a fast best-effort
+            // answer — stop spawning, reap active agents, let in-flight tools
+            // settle, fold. Unlike `stop`, we do NOT halt: the run scope stays
+            // alive and produces its answer + synth. No-op if no run is active.
+            if (runTask) windDown.send();
+            continue;
+          }
+
+          if (cmd.type === "cancel_agent") {
+            // Per-agent discard: signal the pool to halt that one agent's in-flight
+            // tool, prune its branch (reclaim KV for its siblings), and emit a terminal
+            // agent:failed(user_cancel). Unlike `wrap_up`/`stop`, the run keeps going —
+            // the other agents are untouched. No-op if no run is active or the agent
+            // already finished. Ephemeral (nothing persisted).
+            if (runTask) cancelAgent.send({ agentId: cmd.agentId });
+            continue;
+          }
+
           if (cmd.type === "set_model_path") {
             // Composer only mounts in 'composer' phase, so no agent is in
             // flight here. Persist + signal restart; structured concurrency
@@ -1229,6 +1395,15 @@ main(function* () {
           if (cmd.type === "set_reranker_path") {
             saveConfig({ model: { reranker: cmd.path } }, configPath);
             cliRerankerOverride = undefined;
+            return "restart";
+          }
+
+          if (cmd.type === "set_gpu") {
+            // Persist + restart, same shape as /model: the next iteration's
+            // boot re-derives the LLOYAL_GPU env lever from the reloaded
+            // config and re-creates ctx + reranker on the new backend.
+            saveConfig({ model: { gpu: cmd.gpu } }, configPath);
+            cliGpuOverride = undefined;
             return "restart";
           }
 
@@ -1346,6 +1521,24 @@ main(function* () {
               gitignored: saved.gitignored,
               skipped: saved.skipped,
             });
+          } else if (cmd.type === "set_effort") {
+            // Global effort setting → persist to harness.json, reload, echo back.
+            // Every subsequent query reads liveConfig.defaults.effort.
+            const saved = saveConfig(
+              { defaults: { ...liveConfig.defaults, effort: cmd.effort } },
+              configPath,
+            );
+            const reloaded = reloadLiveConfig();
+            liveConfig = reloaded.config;
+            liveOrigin = reloaded.origin;
+            yield* events.send({
+              type: "config:updated",
+              config: liveConfig,
+              origin: liveOrigin,
+              savedTo: saved.path,
+              gitignored: saved.gitignored,
+              skipped: saved.skipped,
+            });
           } else if (cmd.type === "submit_query") {
             if (registry.enabled().length === 0) {
               yield* events.send({
@@ -1366,6 +1559,9 @@ main(function* () {
               continue;
             }
             const wallStartMs = performance.now();
+            // Effort is a global setting (Settings → Effort) — read the live
+            // config value at submit time so a change there applies next query.
+            currentEffort = liveConfig.defaults.effort;
             // A `submit_query` while a run is already in flight = the user
             // started over. Halt the old run first, then start the new (the
             // safe choice — never two concurrent research pools sharing the
@@ -1406,8 +1602,11 @@ main(function* () {
                   yield* runResearchPlan(cmd.query, plan, session, {
                     ...harnessOpts,
                     reasoningMode: cmd.mode,
+                    effort: currentEffort,
                     wallStartMs,
                     appFilter: submissionFilter,
+                    // Ask mode: let the single agent answer directly from context (0 tools OK).
+                    isAsk: cmd.skipPlanner,
                   });
                   yield* events.send({ type: "ui:composer" });
                 } catch (err) {
@@ -1434,6 +1633,7 @@ main(function* () {
                 const result = yield* runQuery(queryText, session, {
                   ...harnessOpts,
                   reasoningMode: queryMode,
+                  effort: currentEffort,
                   context: buildPlannerContext(registry.enabled()),
                   wallStartMs,
                   appFilter: submissionFilter,
@@ -1505,6 +1705,7 @@ main(function* () {
                 const result = yield* runQuery(origQuery, session, {
                   ...harnessOpts,
                   reasoningMode: mode,
+                  effort: currentEffort,
                   context: buildPlannerContext(registry.enabled()),
                   wallStartMs,
                   appFilter,
@@ -1550,6 +1751,7 @@ main(function* () {
                 const result = yield* runQuery(priorPlan.query, session, {
                   ...harnessOpts,
                   reasoningMode: nextMode,
+                  effort: currentEffort,
                   context: buildPlannerContext(registry.enabled()),
                   wallStartMs: priorPlan.wallStartMs,
                   appFilter: priorPlan.appFilter,
@@ -1613,6 +1815,7 @@ main(function* () {
                   {
                     ...harnessOpts,
                     reasoningMode: acceptedPlan.mode,
+                    effort: currentEffort,
                     wallStartMs: acceptedPlan.wallStartMs,
                     appFilter: acceptedPlan.appFilter,
                     // Q1.5: if a clarify round prefilled the user's answer onto

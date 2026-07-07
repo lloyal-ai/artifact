@@ -7,9 +7,8 @@
 
 import assert from 'node:assert';
 import { reduce } from './reducer';
-import { initialState } from './state';
+import { initialState, extractStreamingReport } from './state';
 import type { WorkflowEvent } from './events';
-import { extractStreamingReport } from '../renderer/components/Work';
 
 function drive(events: WorkflowEvent[]) {
   return events.reduce(reduce, initialState);
@@ -517,11 +516,11 @@ function reportStreamSeed(): WorkflowEvent[] {
   ];
 }
 
-check('terminal report streams into contentBuffer; extractStreamingReport yields progressive markdown', () => {
+check('terminal report streams into contentBuffer as raw post-think tokens', () => {
   // The model emits the terminal call as Hermes XML. After </think> closes,
   // the raw tokens (incl. the report body inside <parameter=result>) flow into
-  // contentBuffer. The "Writing report" row reads it via extractStreamingReport
-  // — no parser, no agent:reportDelta, no isPartial.
+  // contentBuffer. (The desktop renderer's extractStreamingReport reads this
+  // buffer; the reducer contract is just: buffer accumulates, phase 'content'.)
   const s = drive([
     ...reportStreamSeed(),
     {
@@ -537,30 +536,6 @@ check('terminal report streams into contentBuffer; extractStreamingReport yields
   // Raw buffer holds the post-</think> XML, marker and all.
   assert.match(a.contentBuffer, /<parameter=result>/);
   assert.match(a.contentBuffer, /\*\*Partial report — findings so far/);
-  // The extractor returns just the report body (open marker stripped, leading \n trimmed).
-  assert.equal(extractStreamingReport(a.contentBuffer), '**Partial report — findings so far');
-});
-
-check('extractStreamingReport stops at </parameter> once the close marker arrives', () => {
-  const s = drive([
-    ...reportStreamSeed(),
-    {
-      type: 'agent:produce',
-      agentId: 1,
-      text: 'go</think>\n\n<tool_call>\n<function=report>\n<parameter=result>\n**Done report',
-      tokenCount: 3,
-    } as WorkflowEvent,
-    { type: 'agent:produce', agentId: 1, text: '\n</parameter>\n</function>\n</tool_call>', tokenCount: 4 } as WorkflowEvent,
-  ]);
-  const a = s.agents.get(1)!;
-  // Body is clipped at the close marker — the </function></tool_call> tail is
-  // excluded. The raw body ends in the model's own trailing newline (the
-  // extractor strips only the leading \n; trailing whitespace is the body's,
-  // and the render gate .trim()s it).
-  assert.equal(extractStreamingReport(a.contentBuffer), '**Done report\n');
-  // Critically: the close marker and everything after it are gone.
-  assert.ok(!extractStreamingReport(a.contentBuffer)!.includes('</parameter>'));
-  assert.ok(!extractStreamingReport(a.contentBuffer)!.includes('</tool_call>'));
 });
 
 check('terminal report agent:tool_call pushes NO generic "Reading" timeline row', () => {
@@ -672,6 +647,33 @@ check('agent:recovered clears recovering + contentBuffer and freezes the report'
   assert.equal((reports[0] as { body: string }).body, 'X');
 });
 
+check('agent:failed marks the agent terminally failed (cross), freezes the timer, no report', () => {
+  const s = drive([
+    { type: 'query', query: 'q', warm: false },
+    {
+      type: 'plan',
+      intent: 'research',
+      tasks: [{ description: 'A' }] as never,
+      clarifyQuestions: [],
+      tokenCount: 1,
+      timeMs: 1,
+    },
+    { type: 'research:start', agentCount: 1, mode: 'flat' },
+    { type: 'agent:spawn', agentId: 1, parentAgentId: 0 } as WorkflowEvent,
+    { type: 'agent:done', agentId: 1 } as WorkflowEvent,
+    { type: 'agent:produce', agentId: 1, text: '{"result":"half a repo', tokenCount: 5 } as WorkflowEvent,
+    { type: 'agent:failed', agentId: 1, reason: 'scope_error: BranchStore::decode_each - llama_decode failed' } as WorkflowEvent,
+  ]);
+  const a = s.agents.get(1)!;
+  assert.equal(a.phase, 'failed');                       // terminal → cross, not a spinner
+  assert.equal(a.recovering, false);                     // stops the "Writing report" row
+  assert.equal(a.contentBuffer, '');                     // partial report dropped, not promoted
+  assert.notEqual(a.endedAt, null);                      // elapsed timer frozen
+  assert.match(a.failReason ?? '', /llama_decode failed/); // surfaced for the tooltip
+  assert.equal(a.timeline.filter((it) => it.kind === 'report').length, 0); // no report
+  assert.equal(s.researchAgentIds.includes(1), false);   // dropped from the live tree
+});
+
 check('config:loaded seeds config without forcing a uiPhase transition', () => {
   const s = drive([
     {
@@ -680,7 +682,7 @@ check('config:loaded seeds config without forcing a uiPhase transition', () => {
         version: 1,
         sources: {},
         apps: { web: { tavilyKey: 'tvly-x' } },
-        defaults: { reasoningMode: 'deep', maxTurns: 10 },
+        defaults: { reasoningMode: 'deep', effort: 'high', maxTurns: 10 },
         model: {},
       },
       origin: {
@@ -688,6 +690,7 @@ check('config:loaded seeds config without forcing a uiPhase transition', () => {
         modelPath: 'default',
         reranker: 'default',
         nCtx: 'default',
+        gpu: 'default',
         outputDir: 'default',
       },
       path: '/tmp/harness.json',
@@ -844,7 +847,7 @@ check('config:updated produces a toast; skipped fields flagged', () => {
     version: 1 as const,
     sources: {},
     apps: { corpus: { corpusPath: '/tmp/c' } },
-    defaults: { reasoningMode: 'deep' as const, maxTurns: 10 },
+    defaults: { reasoningMode: 'deep' as const, effort: 'high' as const, maxTurns: 10 },
     model: {},
   };
   const origin = {
@@ -852,6 +855,7 @@ check('config:updated produces a toast; skipped fields flagged', () => {
     modelPath: 'default' as const,
     reranker: 'default' as const,
     nCtx: 'default' as const,
+    gpu: 'default' as const,
     outputDir: 'default' as const,
   };
   const s = drive([
@@ -1064,6 +1068,24 @@ check('stop → ui:composer returns to composer, RETAINS scrollback + synth buff
   assert.equal(after.synth.buffer, synthBufBefore, 'stop must NOT clear the synth buffer');
   assert.equal(after.agents.size, agentsBefore, 'stop must NOT clear agent timelines');
   assert.equal(after.query, 'q', 'prior query text survives for follow-up context');
+});
+
+check('extractStreamingReport: marker-gated report body from Hermes buffer', () => {
+  // No open marker yet → null (keeps non-terminal tool args off-screen).
+  assert.equal(extractStreamingReport('<tool_call>\n<function=web_search>\n<parameter=query>voice latency'), null);
+  assert.equal(extractStreamingReport(''), null);
+  // Open marker arrived → body streams from there (leading newline dropped).
+  assert.equal(
+    extractStreamingReport('<tool_call>\n<function=report>\n<parameter=result>\n## Findings\nStreaming body'),
+    '## Findings\nStreaming body',
+  );
+  // Close marker arrived → body truncates at it.
+  assert.equal(
+    extractStreamingReport('junk<parameter=result>\nDone body\n</parameter>\n</function>'),
+    'Done body\n',
+  );
+  // The recovering branch (raw buffer, no envelope) is caller-side — the
+  // renderer bypasses extraction entirely when agent.recovering is true.
 });
 
 process.stdout.write('---\n');
