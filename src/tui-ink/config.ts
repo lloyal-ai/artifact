@@ -55,6 +55,18 @@ export function isConfigGpu(v: unknown): v is ConfigGpu {
   return typeof v === 'string' && (CONFIG_GPU_VALUES as readonly string[]).includes(v);
 }
 
+/** Valid run-effort presets. Used to reject a stale/hand-edited harness.json
+ *  value before it reaches EFFORT_PRESETS[effort] (which would throw). */
+export const CONFIG_EFFORT_VALUES: readonly ConfigDefaults['effort'][] = [
+  'low',
+  'medium',
+  'high',
+];
+
+export function isConfigEffort(v: unknown): v is ConfigDefaults['effort'] {
+  return typeof v === 'string' && (CONFIG_EFFORT_VALUES as readonly string[]).includes(v);
+}
+
 export interface ConfigModel {
   /** Filesystem path OR catalog id (e.g. `qwen3.5-4b-q4`). Resolution is
    *  the caller's concern — config just stores whatever the user typed. */
@@ -210,6 +222,11 @@ export function loadConfig(
   const outputDir = rawOutputDir ? resolvePath(rawOutputDir) : undefined;
   const reasoningMode =
     cli.reasoningMode ?? base.defaults.reasoningMode ?? 'flat';
+  // A stale/hand-edited harness.json could carry a bad effort value (e.g.
+  // "ultra"); validate + fall back to the default rather than let it reach
+  // EFFORT_PRESETS[effort] downstream and throw. Same ignore-don't-error rung
+  // as gpu above.
+  const effort = isConfigEffort(base.defaults.effort) ? base.defaults.effort : 'high';
   const rawModelPath = cli.modelPath ?? base.model.path;
   const modelPath = rawModelPath ? resolvePath(rawModelPath) : undefined;
   const reranker = cli.reranker ?? base.model.reranker;
@@ -231,7 +248,7 @@ export function loadConfig(
     apps,
     defaults: {
       reasoningMode,
-      effort: base.defaults.effort,
+      effort,
       maxTurns: base.defaults.maxTurns,
     },
     model: { path: modelPath, reranker, nCtx, gpu },
