@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import type { AppDescriptor } from '../../tui-ink/state'
+import type { AppDescriptor } from 'reasoning.run/state'
 import { dispatch, useEngineState, useEngineStore } from '../bridge'
 import { EFFORT_PRESETS, EFFORT_ORDER, type Effort } from '../../effort-presets'
 
@@ -543,6 +543,12 @@ const EFFORT_COPY: Record<Effort, { name: string; dots: number; eta: string; blu
     dots: 3,
     eta: '~20–30 min',
     blurb: 'The full treatment — explores every angle for a thorough, detailed answer. Best for deep research.',
+  },
+  ultra: {
+    name: 'Ultra',
+    dots: 4,
+    eta: '~40–60 min',
+    blurb: 'The deepest pass — the widest fan-out and largest budgets for the most exhaustive answer. Best for hard, open-ended questions.',
   },
 }
 

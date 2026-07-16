@@ -24,7 +24,7 @@ function lineCategory(raw: string): string {
 export function TraceView(): React.ReactElement {
   const [lines, setLines] = React.useState<TLine[]>([])
   const [file, setFile] = React.useState<string | null>(null)
-  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const scrollRef = React.useRef<HTMLPreElement>(null)
   const pinned = React.useRef(true)
   const nextId = React.useRef(0)
   const partial = React.useRef('') // incomplete trailing line across reads

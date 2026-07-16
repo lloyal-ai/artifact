@@ -1,5 +1,5 @@
 import React from 'react'
-import type { AppState } from '../../tui-ink/state'
+import type { AppState } from 'reasoning.run/state'
 import { useUiNav } from '../ui-store'
 import { IconList, IconSettings } from '../icons'
 import { Gauge } from './Gauge'

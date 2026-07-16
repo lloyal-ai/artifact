@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import type { AgentRuntime, AppState } from '../../tui-ink/state'
+import type { AgentRuntime, AppState } from 'reasoning.run/state'
 import { IconDone } from '../icons'
 import {
   AgentCard,

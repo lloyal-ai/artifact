@@ -1,4 +1,4 @@
-import type { AgentRuntime, AppState, SourceMeta } from '../tui-ink/state'
+import type { AgentRuntime, AppState, SourceMeta } from 'reasoning.run/state'
 
 /**
  * Cross-agent source ledger — derived from the `tool_result` envelope, which

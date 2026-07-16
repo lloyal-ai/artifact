@@ -1,6 +1,6 @@
 import React from 'react'
-import type { AgentRuntime, TimelineItem } from '../../tui-ink/state'
-import { extractStreamingReport } from '../../tui-ink/state'
+import type { AgentRuntime, TimelineItem } from 'reasoning.run/state'
+import { extractStreamingReport } from 'reasoning.run/state'
 import { IconChevron, IconDone, IconThink, toolIcon } from '../icons'
 import { Markdown } from './Markdown'
 
