@@ -22,10 +22,10 @@
  */
 
 import { create } from 'zustand'
-import type { Command } from '../tui-ink/commands'
-import type { WorkflowEvent } from '../tui-ink/events'
-import { reduce } from '../tui-ink/reducer'
-import { initialState, type AppState } from '../tui-ink/state'
+import type { Command } from 'reasoning.run/protocol'
+import type { WorkflowEvent } from 'reasoning.run/protocol'
+import { reduce } from 'reasoning.run/state'
+import { initialState, type AppState } from 'reasoning.run/state'
 
 interface Frame {
   seq: number

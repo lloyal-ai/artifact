@@ -1,6 +1,6 @@
 import React from 'react'
-import type { ResearchTask } from '@lloyal-labs/rig'
-import type { AgentRuntime, AppState, TimelineItem } from '../../tui-ink/state'
+import type { WorkflowEvent } from 'reasoning.run/protocol'
+import type { AgentRuntime, AppState, TimelineItem } from 'reasoning.run/state'
 import { dispatch, useEngineStore } from '../bridge'
 import { useUiNav } from '../ui-store'
 import { agentSourceRows } from '../sources'
@@ -8,6 +8,10 @@ import { IconChevron } from '../icons'
 import { AgentFooter } from './AgentFooter'
 import { Markdown } from './Markdown'
 import { SourceChips, WorkRows, extractReportBody } from './Work'
+
+// `ResearchTask` is not on reasoning.run's export surface — derive it structurally
+// from the `fanout:tasks` event that carries the plan tasks this file renders.
+type ResearchTask = Extract<WorkflowEvent, { type: 'fanout:tasks' }>['tasks'][number]
 
 export const AGENT_COLORS = ['var(--a1)', 'var(--a2)', 'var(--a3)', 'var(--a4)', 'var(--a5)']
 export const agentColor = (i: number): string => AGENT_COLORS[i % AGENT_COLORS.length]

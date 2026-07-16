@@ -1,10 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell, utilityProcess, type UtilityProcess } from 'electron'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { totalmem } from 'node:os'
 import { writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync, existsSync } from 'node:fs'
-import { reduce } from '../src/tui-ink/reducer'
-import { initialState, type AppState } from '../src/tui-ink/state'
-import type { WorkflowEvent, Command } from '../src/tui-ink/events'
+import { reduce, initialState, type AppState } from 'reasoning.run/state'
+import type { WorkflowEvent, Command } from 'reasoning.run/protocol'
 
 /**
  * Electron MAIN process — a thin host: owns the window, spawns the harness in a
@@ -12,8 +11,10 @@ import type { WorkflowEvent, Command } from '../src/tui-ink/events'
  * via lloyal.node, the Effection harness) lives in the engine process so the UI
  * thread never blocks.
  *
- * The engine is the existing esbuild bundle (`dist/bundle.mjs`) run in RR_BRIDGE
- * mode: it streams WorkflowEvents over its parentPort and accepts Commands.
+ * The engine is reasoning.run's prebuilt bundle, forked via its `bin/run.js` in
+ * RR_BRIDGE mode: it streams WorkflowEvents over its parentPort and accepts
+ * Commands. (Artifact = reasoning.run under a UI — the harness is imported, not
+ * forked from a local copy.)
  *
  * Streaming model (matches the Ink TUI verbatim): main FORWARDS each raw
  * WorkflowEvent to the renderer, which runs the same pure `reduce` itself — so
@@ -102,8 +103,14 @@ function pollTrace(): void {
 }
 
 function spawnEngine(): void {
-  // out/main/index.js → <projectRoot>/dist/bundle.mjs (the esbuild engine).
-  const enginePath = join(__dirname, '../../dist/bundle.mjs')
+  // Fork reasoning.run's prebuilt engine — its `bin/run.js` calls `runMain()`.
+  // reasoning.run's `exports` map encapsulates BOTH `package.json` and `bin/`, so
+  // neither is resolvable directly. Resolve the `.` export instead (→ `<pkg>/src/
+  // main.ts`); the engine is its sibling `../bin/run.js`. Forking the bundle
+  // directly would never start — `runMain` is only exported there, not called on
+  // import. (Clean fix belongs in reasoning.run: export `./package.json` or a
+  // dedicated bridge bin — see #551.)
+  const enginePath = join(dirname(require.resolve('reasoning.run')), '..', 'bin', 'run.js')
   const configPath = join(app.getPath('userData'), 'harness.json')
   outputDir = join(app.getPath('documents'), 'Artifact')
 

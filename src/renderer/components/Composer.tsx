@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import type { AppState } from '../../tui-ink/state'
+import type { AppState } from 'reasoning.run/state'
 import { dispatch } from '../bridge'
 import { IconSend, IconStop } from '../icons'
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { Toast as ToastModel } from '../tui-ink/state'
+import type { Toast as ToastModel } from 'reasoning.run/state'
 import { useEngineState } from './bridge'
 import { useUiNav } from './ui-store'
 import { EntChip } from './entitlements'

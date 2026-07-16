@@ -1,5 +1,5 @@
 import React from 'react'
-import type { AppState, DownloadStatus } from '../../tui-ink/state'
+import type { AppState, DownloadStatus } from 'reasoning.run/state'
 import { dispatch } from '../bridge'
 import logoUrl from '../assets/logo.png'
 
@@ -129,7 +129,9 @@ export function Boot({ state }: { state: AppState }): React.ReactElement {
           </div>
         )}
 
-        {err && (
+        {/* `backend-pack` boot errors are a CUDA/Linux box concern (never the Metal
+            desktop) and aren't gguf-recoverable — exclude them from this recovery UI. */}
+        {err && err.kind !== 'backend-pack' && (
           <>
             <div className="booterr">
               <b>{err.kind === 'llm' ? 'Model' : 'Reranker'} failed to load.</b>

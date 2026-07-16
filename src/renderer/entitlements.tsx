@@ -1,5 +1,5 @@
 import React from 'react'
-import type { AppState } from '../tui-ink/state'
+import type { AppState } from 'reasoning.run/state'
 
 /**
  * The four signed entitlement keys (publish-worker `ENTITLEMENTS`, schema-
