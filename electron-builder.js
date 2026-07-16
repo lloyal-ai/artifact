@@ -5,8 +5,9 @@
 // asar:true with asarUnpack for the native package tree — the .node AND its
 // sibling dylibs must live co-located on disk in app.asar.unpacked (natives
 // can't be dlopen'd from inside asar; @loader_path resolves dylibs from the same
-// bin/ dir). The engine `dist/bundle.mjs` stays in asar; the utilityProcess
-// forks it from there.
+// bin/ dir). The engine is reasoning.run's prebuilt bin (node_modules/reasoning.run/
+// bin/run.js) — pure JS, so it stays in asar; the utilityProcess forks it from the
+// packaged production node_modules tree. Only the native lloyal.node is unpacked.
 //
 // ── SIGNING IS ENV-DRIVEN ───────────────────────────────────────────────────
 // No Apple env present  → UNSIGNED build (local de-risk / preview the dmg).
@@ -38,9 +39,9 @@ module.exports = {
   asar: true,
   asarUnpack: ['**/node_modules/@lloyal-labs/lloyal.node*/**'],
   npmRebuild: false,
-  // App files; electron-builder adds the production node_modules tree. The engine
-  // bundle is resolved relative to out/main → ../../dist/bundle.mjs.
-  files: ['out/**', 'dist/bundle.mjs', 'package.json'],
+  // App files; electron-builder adds the production node_modules tree — which is
+  // where the forked engine lives (node_modules/reasoning.run/bin/run.js).
+  files: ['out/**', 'package.json'],
   mac: {
     category: 'public.app-category.productivity',
     icon: 'build/icon.icns',

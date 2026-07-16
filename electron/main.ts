@@ -111,6 +111,16 @@ function spawnEngine(): void {
   // import. (Clean fix belongs in reasoning.run: export `./package.json` or a
   // dedicated bridge bin — see #551.)
   const enginePath = join(dirname(require.resolve('reasoning.run')), '..', 'bin', 'run.js')
+  if (!existsSync(enginePath)) {
+    // Fail fast, loud: a missing/relocated engine would otherwise surface as a
+    // low-signal utilityProcess.fork error deep in startup.
+    dialog.showErrorBox(
+      'Artifact — engine missing',
+      `The reasoning.run engine was not found at:\n${enginePath}\n\n` +
+        `The 'reasoning.run' dependency is missing or its package layout changed. Try reinstalling Artifact.`,
+    )
+    throw new Error(`reasoning.run engine not found at ${enginePath}`)
+  }
   const configPath = join(app.getPath('userData'), 'harness.json')
   outputDir = join(app.getPath('documents'), 'Artifact')
 

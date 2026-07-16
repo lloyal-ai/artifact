@@ -3,9 +3,11 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 
 // Three build targets:
-//  · main     → out/main/index.js    (Electron main process; deps externalized so
-//               `reasoning.run` + the native lloyal.node addon are require'd at
-//               runtime — main FORKS reasoning.run's prebuilt engine, never bundles it)
+//  · main     → out/main/index.js    (Electron main process. BUNDLES reasoning.run's
+//               node-free `./state`+`./protocol` — transpiled at build time (see the
+//               detailed note below); the native lloyal.node addon stays external+require'd.
+//               At RUNTIME main FORKS reasoning.run's prebuilt `bin/run.js` engine over IPC
+//               — a child process, not a bundled import.)
 //  · preload  → out/preload/index.js (contextBridge → window.reasoning)
 //  · renderer → out/renderer/        (Vite React-DOM app; the timeline UI. Bundles
 //               reasoning.run/{state,protocol} — pure, node-free TS — for the shared reduce)

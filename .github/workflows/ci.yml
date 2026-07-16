@@ -21,16 +21,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      - name: Smoke tests
-        run: npm run smoke
+      - name: Build the app (all electron-vite targets)
+        run: npm run app:build
 
-      - name: Build bundle
-        run: npm run build
-
-      # Catches bundle-only bugs that the tsx-based smoke suite can't see
-      # (e.g., CJS interop hazards in ESM output, missing externals).
-      - name: Verify bundle boots
-        run: |
-          out=$(timeout 3 node bin/run.js 2>&1 | head -5 || true)
-          echo "$out"
-          echo "$out" | grep -q "Deep Research"
+      # The engine is no longer vendored: the Electron main process forks
+      # reasoning.run's prebuilt bin at runtime. Assert that entry resolves
+      # from node_modules so a broken/missing dep fails CI, not the user.
+      - name: Verify the forked engine entry is present
+        run: test -f node_modules/reasoning.run/bin/run.js
