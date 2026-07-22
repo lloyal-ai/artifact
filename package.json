@@ -15,10 +15,13 @@
     "app:preview": "electron-vite preview",
     "pack": "npm run app:build && electron-builder --dir",
     "dist": "npm run app:build && electron-builder",
-    "release": "npm run dist && bash release.sh"
+    "release": "npm run dist && bash release.sh",
+    "web:dev": "VITE_WSS_URL=ws://127.0.0.1:8787 vite --config vite.web.config.ts",
+    "web:build": "vite build --config vite.web.config.ts",
+    "web:preview": "vite preview --config vite.web.config.ts"
   },
   "dependencies": {
-    "reasoning.run": "^0.6.0",
+    "reasoning.run": "^0.7.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
@@ -57,7 +60,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lloyal-ai/reasoning-run.git"
+    "url": "git+https://github.com/lloyal-ai/artifact.git"
   },
   "license": "UNLICENSED"
 }
